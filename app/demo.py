@@ -14,6 +14,10 @@ iris = Iris()
 def add(n1 : Int, n2 : Int):
     return n1+n2
 
+@iris.register("add special {n1} and {n2}")
+def add_elementwise(n1 : Int, n2 : Int):
+    return n1+n2
+
 @iris.register("cross-validate using {score} and {n} folds")
 def cross_validate(score : String, n : Int):
     model = iris.env["data_model"]
@@ -138,10 +142,10 @@ iris.env["classes"] = y_data
 
 iris.train_model()
 
-init_message = [{"text": "add 3 4", "origin": "user"}]
-state1 = iris.state_machine({ "state": "START", "messages":init_message})
-print(state1)
-state2 = iris.state_machine({"state": "CLASSIFICATION", "id": state1["id"], "messages":init_message+[{"text": "yes", "origin": "user"}]})
-print(state2)
+# init_message = [{"text": "add 3 4", "origin": "user"}]
+# state1 = iris.state_machine({ "state": "START", "messages":init_message})
+# print(state1)
+# state2 = iris.state_machine({"state": "CLASSIFICATION", "id": state1["id"], "messages":init_message+[{"text": "yes", "origin": "user"}]})
+# print(state2)
 
 # iris.env_loop()

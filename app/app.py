@@ -6,6 +6,7 @@ import os
 import sys
 import aiohttp_cors
 from demo import iris
+from iris import StateMachine
 import util
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
@@ -18,6 +19,8 @@ aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader('templates/'))
 cors = aiohttp_cors.setup(app)
 
 content = None
+
+state_machine = StateMachine(iris)
 
 def add_cors(route):
     cors.add(route, {"*": aiohttp_cors.ResourceOptions(
@@ -51,26 +54,10 @@ add_cors(app.router.add_route('POST', '/upload_react', process_csv))
 
 # END
 
-async def old_loop(request):
-    question = await request.json()
-    print(question)
-    question = question["messages"]
-    top_level_q = question[0]['text']
-    args = parse_args(question)
-    res = iris.loop(top_level_q, args)
-    if res[0] == "Success":
-        results = {"response_type":"success", "type":"ADD_SERVER_MESSAGE", "origin":"iris", "text":res[1]}
-    elif res[0] == "Ask":
-        results = {"response_type":"ask", "type":"ADD_SERVER_MESSAGE", "origin":"iris", "text":res[1]}
-    else:
-        results = {"response_type":"fail", "type":"ADD_SERVER_MESSAGE", "origin":"iris", "text":res[1]}
-    print(results)
-    return web.json_response(results)
-
 async def new_loop(request):
     question = await request.json()
     print(question)
-    response = iris.state_machine(question)
+    response = state_machine.state_machine(question)
     response["origin"] = "iris"
     response["type"] = "ADD_SERVER_MESSAGE"
     print(response)
@@ -89,6 +76,23 @@ async def new_loop(request):
     # return web.json_response(results)
 
 add_cors(app.router.add_route('POST', '/new_loop', new_loop))
+
+async def import_data(request):
+    data = await request.post()
+    column_data = defaultdict(dict)
+    for k,v in data.items():
+        key = "_".join(k.split("_")[:-1])
+        index = int(k.split("_")[-1])
+        column_data[index][key] = v
+    env = util.process_data(column_data, content)
+    X,y,f = util.make_xy(column_data, env)
+    iris.env["data_model"] = LogisticRegression()
+    iris.env["features"] = X
+    iris.env["classes"] = y
+    iris.env["feature-table"] = f
+    return web.Response(status=302, headers={"Location":"http://localhost:3000/"})
+
+add_cors(app.router.add_route('POST', '/import_data', import_data))
 
 async def classify_query(request):
     data = await request.post()
