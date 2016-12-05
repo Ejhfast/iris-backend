@@ -1,4 +1,5 @@
 from . import util
+from .iris_types import IrisValue, IrisImage
 
 def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     succs = [x[0] for x in s_args]
@@ -9,10 +10,17 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     if all(succs):
         learn, lcmd = iris.gen_example(cls_idx, query, for_ex)
         result = iris.class_functions[cls_idx]["function"](*args)
-        if learn:
-            result = ["(I learned how to \"{}\")".format(lcmd),str(result)]
+        iris.train_model()
+        if isinstance(result, IrisImage):
+            result = {"type":"image", "value":result.value}
+        elif isinstance(result, IrisValue):
+            result = "I stored the result in \"{}\"".format(result.name)
         else:
-            result = [str(result)]
+            result = str(result)
+        if learn:
+            result = ["(I learned how to \"{}\")".format(lcmd),result]
+        else:
+            result = [result]
         return result
     else:
         # kind of obnoxious that I am doing string construction here...
@@ -49,10 +57,10 @@ class StateMachine:
         messages = data["messages"]
         # since this is starting an interaction, we only need to look at the first/last message
         text = util.get_start_message(messages)
-        class_id, class_text, _ = self.iris.get_predictions(text)[0]
+        class_id, class_text, pred = self.iris.get_predictions(text)[0]
         # keep track of class_id so we can use it later
         self.class_id = class_id
-        return { "state": "CLASSIFICATION", "text": ["I think you want to \"{}\". Is that correct?".format(class_text[0])] }
+        return { "state": "CLASSIFICATION", "text": ["Would you like to \"{}\"?".format(class_text[0])] }
 
     def state_classify(self, data):
         messages = data["messages"]
@@ -97,23 +105,28 @@ class StateMachine:
         function_data = self.iris.class_functions[class_id] # this gets types, args, and function executable
         cmd_names = self.iris.class2cmd[class_id] # list of possible command strings
         message_args = util.parse_message_args(messages)
-        # case 1: all args are in arg_map derived from messages
+        # case 1: all args can be inferred from matches with one of the command strings
+        for cmd in cmd_names:
+            succ, map_ = self.iris.arg_match(text, cmd)
+            if succ:
+                if all([arg in map_ for arg in function_data["args"]]):
+                    arg_list = [self.iris.magic_type_convert(map_[arg], function_data["types"][arg]) for arg in function_data["args"]]
+                    return self.state_machine({"state": "EXECUTE", "messages": messages, "text": text, "arg_list": arg_list,
+                                               "arg_names": function_data["args"]}, prepend_message)
+                # so we got a successful mapping, but still need to ask for args
+                # don't forget the args we've already got...
+                else:
+                    message_args = {**message_args, **map_}
+        # case 2: all args are in arg_map derived from messages
         if all([arg in message_args for arg in function_data["args"]]):
             arg_list = [self.iris.magic_type_convert(message_args[arg], function_data["types"][arg]) for arg in function_data["args"]]
             return self.state_machine({"state": "EXECUTE", "messages": messages, "text": text, "arg_list": arg_list,
                                        "arg_names": function_data["args"]}, prepend_message)
-        # case 2: all args can be inferred from matches with one of the command strings
-        for cmd in cmd_names:
-            succ, map_ = self.iris.arg_match(text, cmd, function_data["types"])
-            print(succ, map_)
-            if succ:
-                arg_list = [map_[arg] for arg in function_data["args"]]
-                return self.state_machine({"state": "EXECUTE", "messages": messages, "text": text, "arg_list": arg_list,
-                                           "arg_names": function_data["args"]}, prepend_message)
         # case 3: ask user for some number of args
         for arg in function_data["args"]:
             if (not arg in message_args):
-                return {"state": "RESOLVE_ARGS", "text": prepend_message+["What is the value of {}?".format(arg)] }
+                question = function_data["types"][arg].question
+                return {"state": "RESOLVE_ARGS", "text": prepend_message+[question.format(arg)], "arg":arg }
 
     def state_execute(self, data, prepend_message=[]):
         class_id = self.class_id

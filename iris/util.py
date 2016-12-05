@@ -25,6 +25,6 @@ def parse_message_args(messages):
     args = {}
     for i in fail_indexes:
         iris_ask = messages[i]["text"]
-        var = iris_ask.split()[-1][:-1]
+        var = messages[i]["arg"] #iris_ask.split()[-1][:-1]
         args[var] = messages[i+1]["text"]
     return args
