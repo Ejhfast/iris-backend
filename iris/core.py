@@ -5,7 +5,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from collections import defaultdict
 import numpy as np
 from . import util
-from .iris_types import IrisValue, Int, IrisType, Any, List, String
+from .iris_types import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel
 
 class Iris:
 
@@ -16,7 +16,7 @@ class Iris:
         self.class_functions = {}
         self.model = LogisticRegression()
         self.vectorizer = CountVectorizer()
-        self.env = {"results":[]}
+        self.env = {}
 
     def train_model(self):
         x_docs, y = zip(*[(k, v) for k,v in self.cmd2class.items()])
@@ -24,7 +24,7 @@ class Iris:
         self.model.fit(x,y)
 
     def predict_input(self, query):
-        return self.model.predict_log_proba(self.vectorizer.transform([query]))
+        return self.model.predict_proba(self.vectorizer.transform([query]))
 
     def gen_example(self, cls_idx, query_string, arg_triple):
         succs = [x[2] for x in arg_triple]
@@ -68,7 +68,7 @@ class Iris:
         return False
 
     # attempt to match query string to command and return mappings
-    def arg_match(self, query_string, command_string, types):
+    def arg_match(self, query_string, command_string):#, types):
         maps = {}
         labels = []
         query_words, cmd_words = [shlex.split(x) for x in [query_string, command_string]]
@@ -76,9 +76,10 @@ class Iris:
         for qw, cw in zip(query_words, cmd_words):
             if self.is_arg(cw):
                 word_ = cw[1:-1]
-                maps[word_] = self.magic_type_convert(qw, types[word_])
+                maps[word_] = qw #self.magic_type_convert(qw, types[word_])
             else:
                 if qw != cw: return False, {}
+
         return True, maps
 
     def ctx_wrap(self, func):
@@ -86,8 +87,8 @@ class Iris:
             result = func(*args, **kwargs)
             if isinstance(result, IrisValue):
                 self.env[result.name] = result.value
-            else:
-                self.env["results"].append(result)
+            # else:
+            #     self.env["results"].append(result)
             return result
         return inner
 
