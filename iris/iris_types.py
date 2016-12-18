@@ -61,6 +61,7 @@ class ArgList(IrisType):
 class Name(String):
     name = "ArgList"
     question = "What name should I use to store the result?"
+    id = 0 # we need to move to type instances
     def is_type(value): return True
     @classmethod
     def convert_type(cls, value, env):

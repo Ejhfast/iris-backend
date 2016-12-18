@@ -1,6 +1,7 @@
 from collections import defaultdict
 import numpy as np
 from sklearn.linear_model import LogisticRegression
+from iris import IrisValue, IrisImage, IrisModel
 
 # crappy data type inference function
 def detect_data_type(data):
@@ -17,7 +18,7 @@ def detect_data_type(data):
 # TODO: deal with quoted strings
 def rows_and_types(data):
     title = data[0]
-    cols = title.split(",")
+    cols = title.replace("\"","").split(",")
     sample_line = data[1].split(",")
     return list(zip(cols,[detect_data_type(x) for x in sample_line]))
 
@@ -26,7 +27,7 @@ def process_data(meta, content):
     cat2index = {}
     for j,line in enumerate(content):
         if j == 0: continue
-        cols = line.split(",")
+        cols = line.replace("\"","").split(",")
         for i,col in enumerate(cols):
             val = None
             if meta[i]["type"] == "number":
@@ -40,7 +41,38 @@ def process_data(meta, content):
             else:
                 val = col
             env[meta[i]["name"]].append(val)
+    for k,vs in meta.items():
+        tp = meta[k]["type"]
+        if tp in ["number", "categorical"]:
+            env[meta[k]["name"]] = np.array(env[meta[k]["name"]])
     return env
+
+def detect_type(x):
+    if isinstance(x, str):
+        return "string"
+    elif isinstance(x, int):
+        return "int"
+    elif isinstance(x, dict):
+        return "dict"
+    elif isinstance(x, float):
+        return "float"
+    elif isinstance(x, np.ndarray):
+        return "array"
+    elif isinstance(x, list):
+        return "list"
+    elif isinstance(x, IrisImage):
+        return "image"
+    elif isinstance(x, IrisModel):
+        return "model"
+    else:
+        return str(type(x))
+
+def env_vars(iris):
+    out = []
+    for k,v in iris.env.items():
+        key = k.name if isinstance(k, IrisValue) else k
+        out.append({"name": key, "value": detect_type(v), "order": iris.env_order[k]})
+    return out
 
 def make_xy(meta, env):
     X, y = None, None

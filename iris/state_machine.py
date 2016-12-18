@@ -1,5 +1,5 @@
 from . import util
-from .iris_types import IrisValue, IrisImage
+from .iris_types_new import IrisValue, IrisImage
 
 def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     succs = [x[0] for x in s_args]
@@ -14,9 +14,10 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         if isinstance(result, IrisImage):
             result = {"type":"image", "value":result.value}
         elif isinstance(result, IrisValue):
+            print(result, result.name)
             result = "I stored the result in \"{}\"".format(result.name)
         else:
-            result = str(result)
+            result = iris.class2format[cls_idx](result)
         if learn:
             result = ["(I learned how to \"{}\")".format(lcmd),result]
         else:
@@ -58,6 +59,7 @@ class StateMachine:
         # since this is starting an interaction, we only need to look at the first/last message
         text = util.get_start_message(messages)
         class_id, class_text, pred = self.iris.get_predictions(text)[0]
+        print(class_id, class_text, pred)
         # keep track of class_id so we can use it later
         self.class_id = class_id
         return { "state": "CLASSIFICATION", "text": ["Would you like to \"{}\"?".format(class_text[0])] }
@@ -84,7 +86,7 @@ class StateMachine:
             self.option_set = {i:x[0] for i,x in enumerate(predictions)}
             return {"state": "SELECT_OPTION", "text": ["Okay, here are some similar options:"]+options+["Would you like any of these?"] }
         else:
-            return {"state": "START", "text": ["Okay, what would you like to do."] }
+            return {"state": "START", "text": ["Okay, what would you like to do?"] }
 
     def state_select_option(self, data):
         messages = data["messages"]
@@ -95,7 +97,7 @@ class StateMachine:
             cmd_name = self.iris.class2cmd[self.class_id][0]
             return self.state_machine({"state": "RESOLVE_ARGS", "messages":messages }, ["Cool, I can \"{}\"".format(cmd_name)])
         else:
-            return {"state": "START", "text": ["Okay, what would you like to do."] }
+            return {"state": "START", "text": ["Okay, what would you like to do?"] }
 
     def state_resolve_args(self, data, prepend_message=[]):
         messages = data["messages"]
@@ -125,9 +127,11 @@ class StateMachine:
         # case 3: ask user for some number of args
         for arg in function_data["args"]:
             if (not arg in message_args):
-                question = function_data["types"][arg].question
-                return {"state": "RESOLVE_ARGS", "text": prepend_message+[question.format(arg)], "arg":arg }
+                question_messages = function_data["types"][arg].question(arg)
+                return {"state": "RESOLVE_ARGS", "text": prepend_message+question_messages, "arg":arg }
 
     def state_execute(self, data, prepend_message=[]):
         class_id = self.class_id
-        return {"state":"START", "text": prepend_message + process_succ_failure(self.iris, class_id, data["arg_list"], data["arg_names"], data["text"])}
+        label = self.iris.class2title[class_id].upper()
+        response_text = prepend_message + process_succ_failure(self.iris, class_id, data["arg_list"], data["arg_names"], data["text"])
+        return {"state":"START", "text": response_text, "label":label }

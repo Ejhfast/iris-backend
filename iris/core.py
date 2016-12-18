@@ -1,11 +1,12 @@
 import shlex
 import random
+import pickle
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import CountVectorizer
 from collections import defaultdict
 import numpy as np
 from . import util
-from .iris_types import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel
+from .iris_types_new import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, IrisId, Array, Select
 
 class Iris:
 
@@ -17,6 +18,9 @@ class Iris:
         self.model = LogisticRegression()
         self.vectorizer = CountVectorizer()
         self.env = {}
+        self.env_order = {}
+        self.class2title = {}
+        self.class2format = {}
 
     def train_model(self):
         x_docs, y = zip(*[(k, v) for k,v in self.cmd2class.items()])
@@ -71,7 +75,7 @@ class Iris:
     def arg_match(self, query_string, command_string):#, types):
         maps = {}
         labels = []
-        query_words, cmd_words = [shlex.split(x) for x in [query_string, command_string]]
+        query_words, cmd_words = [shlex.split(x.lower()) for x in [query_string, command_string]]
         if len(query_words) != len(cmd_words): return False, {}
         for qw, cw in zip(query_words, cmd_words):
             if self.is_arg(cw):
@@ -86,21 +90,35 @@ class Iris:
         def inner(*args, **kwargs):
             result = func(*args, **kwargs)
             if isinstance(result, IrisValue):
-                self.env[result.name] = result.value
+                # for id values, we are keeping the iris object
+                if isinstance(result, IrisId):
+                    self.env[result.name] = result
+                else:
+                    self.env[result.name] = result.value
+                self.env_order[result.name] = len(self.env_order)
             # else:
             #     self.env["results"].append(result)
             return result
         return inner
 
-    def register(self, command_string):
+    def register(self, title, examples=[], format_out=lambda x: str(x)):
         def inner(func):
+            inner_examples = [title]
+            if len(examples) > 0:
+                inner_examples = examples
             # sketchy hack to get function arg names CPython
             f_args = func.__code__.co_varnames[:func.__code__.co_argcount]
             f_types = func.__annotations__
-            self.mappings[command_string] = {"function":self.ctx_wrap(func), "args":f_args}
-            new_index = len(self.cmd2class)
-            self.cmd2class[command_string] = new_index
-            self.class2cmd[new_index].append(command_string)
+            # the unique index for this function
+            new_index = len(self.class_functions)
             self.class_functions[new_index] = {"function":self.ctx_wrap(func), "args":f_args, "types":f_types}
+            self.class2title[new_index] = title
+            self.class2format[new_index] = format_out
+            for command_string in inner_examples:
+                lower_command = command_string.lower()
+                print(new_index, lower_command)
+                self.mappings[lower_command] = {"function":self.ctx_wrap(func), "args":f_args}
+                self.cmd2class[lower_command] = new_index
+                self.class2cmd[new_index].append(lower_command)
             return self.ctx_wrap(func)
         return inner

@@ -1,50 +1,181 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath('..'))
-from iris import Iris, IrisImage, IrisValue, Int, IrisType, Any, List, String, ArgList, Name, IrisModel
+from iris import Iris, IrisImage, IrisValue, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, Array, Select
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 from iris import primitives as iris_api
 import fileinput
 import numpy as np
+import math
 iris = Iris()
 
-# here we simply add two integers, result will be appended to
-# result list in enviornment context
-@iris.register("add {n1} and {n2}")
-def add(n1 : Int, n2 : Int):
+
+# MAGIC COMMANDS
+
+@iris.register("save environment to {name}")
+def save_env(name : String(question="What filename to save under?")):
+    import pickle
+    with open(name, 'wb') as f:
+        pickle.dump({"env":iris.env, "env_order":iris.env_order}, f)
+        return "Saved to {}.".format(name)
+
+@iris.register("load environment from {name}")
+def load_env(name : String(question="What filename to save under?")):
+    import pickle
+    with open(name, 'rb') as f:
+        data = pickle.load(f)
+        iris.env = data["env"]
+        iris.env_order = data["env_order"]
+        return "Loaded environment from \"{}\".".format(name)
+
+# ADD
+examples = [ "add {n1} and {n2}",
+             "add {n1} {n2}" ]
+
+@iris.register("add two numbers", examples=examples)
+def add(n1 : Int(), n2 : Int()):
     return n1+n2
 
-@iris.register("add and store {n1} and {n2}")
-def add(n1 : Int, n2 : Int, name : Name):
-    return IrisValue(n1+n2, name=name)
+# ADD AND STORE
+examples = [ "add store {n1} and {n2}",
+                   "add store {n1} {n2}" ]
 
-@iris.register("print stuff {n} times")
-def print_stuff(stuff_list : ArgList, n : Int):
-    return [stuff_list]*n
+@iris.register("add and store two numbers", examples=examples)
+def add_store(n1 : Int(), n2 : Int(), name : Name()):
+    return IrisValue(n1+n2, name=name.name)
 
-@iris.register("pearson correlation between {x} and {y}")
-def pearsonr(x : Any, y : Any):
+# PEARSON CORRELATION
+examples = [ "pearson correlation between {x} and {y}",
+             "pearson correlation {x} {y}" ]
+
+explain = lambda result: "Correlation of {} with p-value of {}".format(round(result[0],4), round(result[1],4))
+
+@iris.register("pearson correlation", examples=examples, format_out=explain)
+def pearsonr(x : Array(), y : Array()):
     from scipy.stats import pearsonr
     return pearsonr(x,y)
 
-@iris.register("build a new predictive model")
-def make_model(x_features : ArgList, y_classes : ArgList, name : Name):
+# CLASSIFICATION MODEL
+
+examples = [ "build a new classification model",
+             "make a new classification model" ]
+
+@iris.register("new classification model")
+def make_model(x_features : ArgList(), y_classes : ArgList(), name : Name()):
     model = LogisticRegression()
     X = np.array(x_features).T
     y = np.array(y_classes).T
     y = y.reshape(y.shape[0])
-    print(X.shape, y.shape)
     model.fit(X,y)
-    return IrisModel(model, X, y, name=name)
+    return IrisModel(model, X, y, name=name.value)
 
-@iris.register("cross-validate {model} with {score} and {n} folds")
-def cross_validate_model(model : Any, score : String, n : Int):
+# Test option
+
+options = { "an organge fruit": "orange",
+            "from apple trees": "apple" }
+
+@iris.register("select apple or orange")
+def select_option(opt : Select(options, default="orange")):
+    return opt
+
+# Cross-validate
+
+classifier_scores = { "Accuracy, correct predictions / incorrect predictions": "accuracy",
+                      "F1 macro, f1 score computed with average across classes": "f1_macro",
+                      "F1 micro, f1 score computed with weighted average": "f1_micro" }
+
+select_classifier = Select(classifier_scores, default="accuracy")
+
+explain = lambda scores: "Average performance of {} across the folds".format(round(np.average(scores),4))
+
+@iris.register("cross-validate {model} with {score} and {n} folds", format_out=explain)
+def cross_validate_model(model : Any(), score : select_classifier, n : Int()):
     from sklearn.cross_validation import cross_val_score
     return cross_val_score(model.model, model.X, model.y, scoring = score, cv=n)
 
+@iris.register("compute auc curve data for {model}")
+def compute_auc(model : Any(), name : Name()):
+    from sklearn.metrics import roc_curve, auc
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import label_binarize
+    from scipy import interp
+    classes = set(model.y)
+    n_classes = len(classes)
+    X_train, X_test, y_train, y_test = train_test_split(model.X, model.y, test_size=0.1, random_state=0)
+    y_score = model.model.fit(X_train, y_train).decision_function(X_test)
+    fpr = {}
+    tpr = {}
+    roc_auc = {}
+    binary_ytest = label_binarize(y_test, classes=list(classes))
+    for i in range(n_classes):
+        fpr[i], tpr[i], _ = roc_curve(binary_ytest[:, i], y_score[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+    # Compute micro-average ROC curve and ROC area
+    fpr["micro"], tpr["micro"], _ = roc_curve(binary_ytest.ravel(), y_score.ravel())
+    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+    # Compute macro-average ROC curve and ROC area
+    # First aggregate all false positive rates
+    all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+    # Then interpolate all ROC curves at this points
+    mean_tpr = np.zeros_like(all_fpr)
+    for i in range(n_classes):
+        mean_tpr += interp(all_fpr, fpr[i], tpr[i])
+    # Finally average it and compute AUC
+    mean_tpr /= n_classes
+    fpr["macro"] = all_fpr
+    tpr["macro"] = mean_tpr
+    roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+    package_data = {"fpr": fpr, "tpr": tpr, "roc_auc": roc_auc, "n_classes": n_classes}
+    # are we in the iris environment, or calling this function in code?
+    if isinstance(name, IrisValue):
+        return IrisValue(package_data, name=name.name)
+    else:
+        return package_data
+
+@iris.register("plot auc curve from {data}")
+def plot_auc_data(data : Any(question="Where is the auc plot data?"), name : Name()):
+    import matplotlib
+    matplotlib.use('AGG')
+    import matplotlib.pyplot as plt
+    fpr, tpr, roc_auc, n_classes = data["fpr"], data["tpr"], data["roc_auc"], data["n_classes"]
+    # Plot all ROC curves
+    f = plt.figure(name.id)
+    plt.plot(fpr["micro"], tpr["micro"],
+             label='micro-average ROC curve (area = {0:0.2f})'
+                   ''.format(roc_auc["micro"]),
+             color='deeppink', linestyle=':', linewidth=4)
+
+    plt.plot(fpr["macro"], tpr["macro"],
+             label='macro-average ROC curve (area = {0:0.2f})'
+                   ''.format(roc_auc["macro"]),
+             color='navy', linestyle=':', linewidth=4)
+
+    for i in range(n_classes):
+        plt.plot(fpr[i], tpr[i],
+                 label='ROC curve of class {0} (area = {1:0.2f})'
+                 ''.format(i, roc_auc[i]))
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Some extension of Receiver operating characteristic to multi-class')
+    plt.legend(loc="lower right")
+    return iris_api.send_plot(f, name)
+
+@iris.register("plot auc curve for {model}")
+def plot_auc(model : Any(), name : Name()):
+    import matplotlib
+    matplotlib.use('AGG')
+    import matplotlib.pyplot as plt
+    data = compute_auc(model, None)
+    return plot_auc_data(data, name)
+
+# compare models
+
 @iris.register("compare {model1} and {model2}")
-def make_model(model1 : Any, model2 : Any):
+def make_model(model1 : Any(), model2 : Any()):
     import numpy as np
     m1_scores = np.average(cross_validate_model(model1, "f1_macro", 10))
     m2_scores = np.average(cross_validate_model(model2, "f1_macro", 10))
@@ -57,50 +188,38 @@ def make_model(model1 : Any, model2 : Any):
     return "I'd say \"{}\" is better than \"{}\", with {} vs. {} f1_macro".format(higher_m.name, lower_m.name, higher_s, lower_s)
 
 
-@iris.register("add special {n1} and {n2}")
-def add_elementwise(n1 : Int, n2 : Int):
-    return n1+n2
-
-@iris.register("cross-validate using {score} and {n} folds")
-def cross_validate(score : String, n : Int):
-    model = iris.env["data_model"]
-    x = iris.env["features"]
-    y = iris.env["classes"]
-    from sklearn.cross_validation import cross_val_score
-    return cross_val_score(model, x, y, scoring = score, cv=n)
-
 @iris.register("plot a histogram on {data}")
-def plot_histogram(data : Any):
+def plot_histogram(data : Any(), name : Name()):
     import matplotlib
     matplotlib.use('AGG')
     import matplotlib.pyplot as plt
+    f = plt.figure(name.id)
     plt.hist(data)
-    return iris_api.send_plot(plt)
+    return iris_api.send_plot(f, name)
 
+select_classifier = Select(classifier_scores, default="accuracy")
 
-@iris.register("find the best regularization parameter")
-def find_regularize():
-    model = iris.env["data_model"]
-    x = iris.env["features"]
-    y = iris.env["classes"]
+explain = lambda x: "The best l2 score is {} with cross-validation performance of {} {}".format(x[0], round(x[1],4), x[2])
+
+@iris.register("find the best regularization parameter for {model} with {score}", format_out=explain)
+def find_regularize(model : Any(), scoring : select_classifier):
     from sklearn.cross_validation import cross_val_score
     import numpy as np
     best_score = 0
     best_c = None
     for c in [0.01, 0.1, 1, 10, 100]:
-        model = LogisticRegression(C=c)
-        score = np.average(cross_val_score(model, x, y, scoring = "accuracy", cv=5))
+        score = np.average(cross_val_score(model.model, model.X, model.y, scoring = scoring, cv=5))
         if score > best_score:
             best_score = score
             best_c = c
-    return "best l2 is {} with cross-validation performance of {} accuracy".format(best_c, best_score)
+    return best_c, best_score, scoring
 
 @iris.register("list features")
 def list_features():
     return iris.env.keys()
 
 @iris.register("find predictive value of {feature}")
-def get_predictive_value(feature : String):
+def get_predictive_value(feature : String()):
     model = iris.env["data_model"]
     x = iris.env["features"]
     y = iris.env["classes"]
@@ -123,23 +242,23 @@ def all_features():
 # so here we add a new named variable to enviornment context that
 # holds the result
 @iris.register("add {n1:Int} and {n2:Int} to var")
-def add_named(n1 : Int, n2 : Int):
+def add_named(n1 : Int(), n2 : Int()):
     return IrisValue(n1+n2, name="n1_and_n2")
 
 # demonstrate lookup of variable from environment
 @iris.register("sum {lst}")
-def sum1(lst : List):
+def sum1(lst : List()):
     return sum(lst)
 
 @iris.register("count {lst}")
-def count1(lst : Any):
+def count1(lst : Any()):
     counts = defaultdict(int)
     for x in lst:
         counts[x] += 1
     return counts
 
 @iris.register("make indicator for {lst}")
-def make_indicator(lst : Any):
+def make_indicator(lst : Any()):
     keys = set(lst)
     index2key = {i:k for i,k in enumerate(keys)}
     key2index = {k:i for i,k in index2key.items()}
@@ -157,8 +276,8 @@ def last_values():
 def env():
     return iris.env
 
-@iris.register("{x}")
-def info(x : Any):
+@iris.register("print data", examples=["print data {x}", "{x}"])
+def info(x : Any()):
     return x
 
 @iris.register("list commands")

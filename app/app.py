@@ -60,14 +60,14 @@ async def new_loop(request):
     response = state_machine.state_machine(question)
     response["origin"] = "iris"
     response["type"] = "ADD_SERVER_MESSAGE"
-    response["variables"] = list(iris.env.keys())
-    print(response)
+    response["variables"] = util.env_vars(iris)
+    print("response", response)
     return web.json_response(response)
 
 add_cors(app.router.add_route('POST', '/new_loop', new_loop))
 
 async def variables(request):
-    response = {"type": "UPDATE_VARIABLES", "variables": list(iris.env.keys())}
+    response = {"type": "UPDATE_VARIABLES", "variables": util.env_vars(iris)}
     return web.json_response(response)
 
 add_cors(app.router.add_route('GET', '/variables', variables))
@@ -80,14 +80,12 @@ async def import_data(request):
         key = "_".join(k.split("_")[:-1])
         index = int(k.split("_")[-1])
         column_data[index][key] = v
+    for i in column_data.keys():
+        column_data[i]["name"] = column_data[i]["name"].lower()
     env = util.process_data(column_data, content)
     for k,vs in env.items():
         iris.env[k] = vs
-    # X,y,f = util.make_xy(column_data, env)
-    # iris.env["data_model"] = LogisticRegression()
-    # iris.env["features"] = X
-    # iris.env["classes"] = y
-    # iris.env["feature-table"] = f
+        iris.env_order[k] = len(iris.env_order)
     return web.Response(status=302, headers={"Location":"http://localhost:3000/"})
 
 add_cors(app.router.add_route('POST', '/import_data', import_data))
