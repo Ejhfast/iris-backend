@@ -1,5 +1,5 @@
 from . import util
-from .iris_types_new import IrisValue, IrisImage
+from .iris_types_new import IrisValue, IrisImage, IrisValues
 
 def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     succs = [x[0] for x in s_args]
@@ -14,8 +14,12 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         if isinstance(result, IrisImage):
             result = {"type":"image", "value":result.value}
         elif isinstance(result, IrisValue):
-            print(result, result.name)
-            result = "I stored the result in \"{}\"".format(result.name)
+            # FIXME: support this better, mutliple iris values
+            if isinstance(result, IrisValues):
+                name = ", ".join(result.names)
+            else:
+                name = result.name
+            result = "I stored the result in \"{}\"".format(name)
         else:
             result = iris.class2format[cls_idx](result)
         if learn:
@@ -134,4 +138,6 @@ class StateMachine:
         class_id = self.class_id
         label = self.iris.class2title[class_id].upper()
         response_text = prepend_message + process_succ_failure(self.iris, class_id, data["arg_list"], data["arg_names"], data["text"])
+        # if this was a recursed call, want to pop something off the stack here
         return {"state":"START", "text": response_text, "label":label }
+      

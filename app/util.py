@@ -1,7 +1,7 @@
 from collections import defaultdict
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from iris import IrisValue, IrisImage, IrisModel
+from iris import IrisValue, IrisImage, IrisModel, IrisData
 
 # crappy data type inference function
 def detect_data_type(data):
@@ -64,6 +64,8 @@ def detect_type(x):
         return "image"
     elif isinstance(x, IrisModel):
         return "model"
+    elif isinstance(x, IrisData):
+        return "dataset"
     else:
         return str(type(x))
 

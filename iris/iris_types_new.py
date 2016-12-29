@@ -89,8 +89,12 @@ class Name(String):
     question_txt = "What name should I use to store the result of this computation?"
     global_id = 0
 
-    def __init__(self, name=None):
+    def __init__(self, name=None, question=None):
         self.class_ = self.class_ = type(self).__name__ # annoying duplication. super?
+        if name:
+            self.name = name
+        if question:
+            self.question_txt = question
 
     def is_type(self, value): return True
 
@@ -140,6 +144,11 @@ class IrisValue:
         self.value = value
         self.name = name
 
+class IrisValues(IrisValue):
+    def __init__(self, values, names):
+        self.values = values
+        self.names = names
+
 class IrisId(IrisValue):
     def __init__(self, value, id, name=None):
         self.value = value
@@ -160,3 +169,9 @@ class IrisModel(IrisValue):
         self.model = model
         self.name = name
         self.value = self
+
+class IrisData(IrisValue):
+    type="Data"
+    def __init__(self, xvals, yvals):
+        self.X = xvals
+        self.y = yvals

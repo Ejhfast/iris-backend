@@ -6,7 +6,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from collections import defaultdict
 import numpy as np
 from . import util
-from .iris_types_new import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, IrisId, Array, Select
+from .iris_types_new import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, IrisId, Array, Select, IrisValues, IrisData
 
 class Iris:
 
@@ -93,9 +93,14 @@ class Iris:
                 # for id values, we are keeping the iris object
                 if isinstance(result, IrisId):
                     self.env[result.name] = result
+                    self.env_order[result.name] = len(self.env_order)
+                elif isinstance(result, IrisValues):
+                    for name, value in zip(result.names, result.values):
+                        self.env[name] = value
+                        self.env_order[name] = len(self.env_order)
                 else:
                     self.env[result.name] = result.value
-                self.env_order[result.name] = len(self.env_order)
+                    self.env_order[result.name] = len(self.env_order)
             # else:
             #     self.env["results"].append(result)
             return result

@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath('..'))
-from iris import Iris, IrisImage, IrisValue, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, Array, Select
+from iris import Iris, IrisImage, IrisValue, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, Array, Select, IrisValues, IrisData
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 from iris import primitives as iris_api
@@ -29,13 +29,21 @@ def load_env(name : String(question="What filename to save under?")):
         iris.env_order = data["env_order"]
         return "Loaded environment from \"{}\".".format(name)
 
-# ADD
+# OPTION 1
 examples = [ "add {n1} and {n2}",
              "add {n1} {n2}" ]
 
 @iris.register("add two numbers", examples=examples)
 def add(n1 : Int(), n2 : Int()):
     return n1+n2
+
+# OPTION 2
+# class AddTwoNumbers(IrisCommand):
+#     title = "add two numbers"
+#     examples = [ "add {n1} and {n2}",
+#                  "add {n1} {n2}" ]
+#     def command(n1 : Int(), n2: Int()):
+#         return n1+n2
 
 # ADD AND STORE
 examples = [ "add store {n1} and {n2}",
@@ -46,6 +54,8 @@ def add_store(n1 : Int(), n2 : Int(), name : Name()):
     return IrisValue(n1+n2, name=name.name)
 
 # PEARSON CORRELATION
+
+# OPTION 1
 examples = [ "pearson correlation between {x} and {y}",
              "pearson correlation {x} {y}" ]
 
@@ -55,6 +65,22 @@ explain = lambda result: "Correlation of {} with p-value of {}".format(round(res
 def pearsonr(x : Array(), y : Array()):
     from scipy.stats import pearsonr
     return pearsonr(x,y)
+
+# OPTION 2
+
+# class PearsonCorrelation(IrisCommand):
+#
+#     title = "pearson correlation: {x} and {y}"
+#     examples = [ "pearson correlation between {x} and {y}",
+#                  "pearson correlation {x} {y}" ]
+#
+#     def command(x : Array(), y : Array()):
+#         from scipy.stats import pearsonr
+#         return pearsonr(x,y)
+#
+#     def explanation(result):
+#         corr, pval = round(result[0],4), round(result[1],4)
+#         return "Correlation of {} with p-value of {}".format(corr, pval)
 
 # CLASSIFICATION MODEL
 
@@ -70,14 +96,64 @@ def make_model(x_features : ArgList(), y_classes : ArgList(), name : Name()):
     model.fit(X,y)
     return IrisModel(model, X, y, name=name.value)
 
-# Test option
+# MAKE TEST/TRAIN SPLITS
 
-options = { "an organge fruit": "orange",
-            "from apple trees": "apple" }
+# OPTION 1
 
-@iris.register("select apple or orange")
-def select_option(opt : Select(options, default="orange")):
-    return opt
+q_txt = "What would you like to name the {} data?"
+@iris.register("create training and test data splits")
+def split_data(x_features : ArgList(), y_classes : ArgList(), train_name : Name(question=q_txt.format("training")), test_name : Name(question=q_txt.format("test"))):
+    from sklearn.model_selection import train_test_split
+    xvals = np.array(x_features).T
+    yvals = np.array(y_classes).T
+    yvals = yvals.reshape(yvals.shape[0])
+    x_train, x_test, y_train, y_test = train_test_split(xvals, yvals, train_size=0.25)
+    train_data = IrisData(x_train, y_train)
+    test_data = IrisData(x_test, y_test)
+    return IrisValues(values=[train_data, test_data], names=[train_name.name, test_name.name])
+
+# OPTION 2
+
+# class SplitData(IrisCommand):
+#     title = "create training and test data splits"
+#     examples = [ "split data train test",
+#                  "randomly select data for training and testing"]
+#
+#     argument_types = { "x_features": ArgList(),
+#                        "y_feartures": ArgList()
+#                        "training_name": Name(question="What would you like to name the training data")
+#                        "testing_name": Name(question="What would you like to name the testing data") }
+#
+#     def command(x_features, y_features, training_name, testing_name):
+#             from sklearn.model_selection import train_test_split
+#             xvals = np.array(x_features).T
+#             yvals = np.array(y_classes).T
+#             yvals = yvals.reshape(yvals.shape[0])
+#             x_train, x_test, y_train, y_test = train_test_split(xvals, yvals, train_size=0.25)
+#             train_data = IrisData(x_train, y_train)
+#             test_data = IrisData(x_test, y_test)
+#             return train_data, train_name.name, test_data, test_name.name
+#
+#     def memory(*args):
+#         train_data, train_name, test_data, test_name = args
+#         return IrisValues(values=[train_data, test_data], names=[train_name.name, test_name.name])
+
+
+# evaluate model on train test_name
+
+@iris.register("train {model} on {data}")
+def train_model(model : Any(), data : Any()):
+    model.model.fit(data.X, data.y)
+    return "I fit the model"
+
+@iris.register("evaluate {model} on {data}")
+def evaluate_model(model : Any(), data : Any()):
+    from sklearn.metrics import f1_score
+    test_y = data.y
+    pred_y = model.model.predict(data.X)
+    # need to support multiple metrics
+    score = f1_score(test_y, pred_y, average="macro")
+    return "F1 score of {}".format(score)
 
 # Cross-validate
 
