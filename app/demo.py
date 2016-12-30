@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath('..'))
-from iris import Iris, IrisImage, IrisValue, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, Array, Select, IrisValues, IrisData
+from iris import IrisCommand, Iris, IrisImage, IrisValue, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, Array, Select, IrisValues, IrisData
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 from iris import primitives as iris_api
@@ -10,6 +10,23 @@ import numpy as np
 import math
 iris = Iris()
 
+#from iris import types as t
+
+class CoolCommand(IrisCommand):
+    title = "cool command"
+    examples = [ "be cool {x} and {y}"]
+    def command(x : Int(), y : Int()):
+        return x + y
+
+class UncoolCommand(IrisCommand):
+    title = "uncool command"
+    examples = [ "be uncool {x} and {y}"]
+    def memory(x, name):
+        return IrisValue(x, name=name)
+    def command(x : Int(), y : Int(), name : Name()):
+        return x - y, name.name
+
+#uncoolCommand = UncoolCommand()
 
 # MAGIC COMMANDS
 

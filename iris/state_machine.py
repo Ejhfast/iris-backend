@@ -1,5 +1,6 @@
 from . import util
-from .iris_types_new import IrisValue, IrisImage, IrisValues
+from .core_new import IRIS
+from .iris_types import IrisValue, IrisImage, IrisValues
 
 def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     succs = [x[0] for x in s_args]
@@ -8,7 +9,7 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     triples = list(zip(arg_names,args,succs))
     for_ex = list(zip(arg_names,values,succs))
     if all(succs):
-        learn, lcmd = iris.gen_example(cls_idx, query, for_ex)
+        learn, lcmd = iris.learn_from_example(cls_idx, query, for_ex)
         result = iris.class_functions[cls_idx]["function"](*args)
         iris.train_model()
         if isinstance(result, IrisImage):
@@ -36,10 +37,10 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         return ["I ran into a problem:"]+arg_assumptions+arg_problems
 
 
-class StateMachine:
+class StateMachine():
 
-    def __init__(self, iris):
-        self.iris = iris
+    def __init__(self):
+        self.iris = IRIS
         # be careful: instead of threading this through requests, keeping it here
         self.class_id = None
 
@@ -113,7 +114,7 @@ class StateMachine:
         message_args = util.parse_message_args(messages)
         # case 1: all args can be inferred from matches with one of the command strings
         for cmd in cmd_names:
-            succ, map_ = self.iris.arg_match(text, cmd)
+            succ, map_ = util.arg_match(text, cmd)
             if succ:
                 if all([arg in map_ for arg in function_data["args"]]):
                     arg_list = [self.iris.magic_type_convert(map_[arg], function_data["types"][arg]) for arg in function_data["args"]]
@@ -132,7 +133,7 @@ class StateMachine:
         for arg in function_data["args"]:
             if (not arg in message_args):
                 question_messages = function_data["types"][arg].question(arg)
-                return {"state": "RESOLVE_ARGS", "text": prepend_message+question_messages, "arg":arg }
+                return {"state": "RESOLVE_ARGS", "text": prepend_message+question_messages, "arg":arg}
 
     def state_execute(self, data, prepend_message=[]):
         class_id = self.class_id
@@ -140,4 +141,3 @@ class StateMachine:
         response_text = prepend_message + process_succ_failure(self.iris, class_id, data["arg_list"], data["arg_names"], data["text"])
         # if this was a recursed call, want to pop something off the stack here
         return {"state":"START", "text": response_text, "label":label }
-      

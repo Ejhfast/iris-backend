@@ -6,7 +6,7 @@ import os
 import sys
 import aiohttp_cors
 from demo import iris
-from iris import StateMachine
+from iris import StateMachine, IRIS
 import util
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
@@ -20,7 +20,9 @@ cors = aiohttp_cors.setup(app)
 
 content = None
 
-state_machine = StateMachine(iris)
+state_machine = StateMachine()
+IRIS.train_model()
+iris = IRIS
 
 def add_cors(route):
     cors.add(route, {"*": aiohttp_cors.ResourceOptions(

@@ -6,7 +6,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from collections import defaultdict
 import numpy as np
 from . import util
-from .iris_types_new import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, IrisId, Array, Select, IrisValues, IrisData
+from .iris_types import IrisValue, IrisImage, Int, IrisType, Any, List, String, ArgList, Name, IrisModel, IrisId, Array, Select, IrisValues, IrisData
 
 class Iris:
 

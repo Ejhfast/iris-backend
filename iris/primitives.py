@@ -1,4 +1,4 @@
-from .iris_types_new import IrisValue, IrisImage, Int, IrisType, Any, List, String
+from .iris_types import IrisValue, IrisImage, Int, IrisType, Any, List, String
 
 # write matplotlib plot to bytes encoded as string
 def send_plot(plt, name):
