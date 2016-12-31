@@ -84,7 +84,7 @@ class ArgList(IrisType):
         else:
             self.fail_check(value, env)
 
-class Name(String):
+class StoreName(String):
     name = "Name"
     question_txt = "What name should I use to store the result of this computation?"
     global_id = 0
@@ -100,8 +100,8 @@ class Name(String):
 
     def fail_check(self, value, env):
         try:
-            Name.global_id += 1
-            return True, IrisId(str(value),Name.global_id), value
+            StoreName.global_id += 1 # sketchy
+            return True, IrisId(str(value),StoreName.global_id), value
         except:
             return False, "I want an {} type, but couldn't find one for \"{}\"".format(self.class_, value), value
 
@@ -109,16 +109,18 @@ class Select(IrisType):
     name = "Option"
 
     def __init__(self, options, default=None):
-        id2option, id2data = {}, {}
+        id2option, id2data, data2id = {}, {}, {}
         self.default = None
         for i,d in enumerate(options.items()):
             option_text, option_data = d
             id2option[i] = option_text
             id2data[i] = option_data
+            data2id[option_data] = i
             if option_data == default:
                 self.default = i
         self.id2option = id2option
         self.id2data = id2data
+        self.data2id = data2id
 
     def question(self, x):
         begin = ["Please select one of the following for \"{}\":".format(x)]
@@ -136,7 +138,8 @@ class Select(IrisType):
             if intv in self.id2option:
                 return True, self.id2data[intv], value
         except:
-            pass
+            if value in self.data2id:
+                return True, value, value
         return False, "\"{}\" was not a valid option".format(value), value
 
 class IrisValue:
@@ -163,12 +166,10 @@ class IrisImage(IrisId):
 
 class IrisModel(IrisValue):
     type="Model"
-    def __init__(self, model, X, y, name):
+    def __init__(self, model, X, y):
         self.X = X
         self.y = y
         self.model = model
-        self.name = name
-        self.value = self
 
 class IrisData(IrisValue):
     type="Data"

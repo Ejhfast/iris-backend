@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import aiohttp_cors
-from demo import iris
+import demo
 from iris import StateMachine, IRIS
 import util
 from collections import defaultdict

@@ -1,5 +1,13 @@
 import shlex
 
+def single_or_list(x):
+    if isinstance(x, list):
+        return x
+    if isinstance(x, tuple):
+        return x
+    else:
+        return [x]
+
 # state machine util, conversation parsing
 
 def get_start_message(messages): return messages[0]["text"]

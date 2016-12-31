@@ -1,7 +1,7 @@
 from collections import defaultdict
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from iris import IrisValue, IrisImage, IrisModel, IrisData
+from iris import iris_types as t
 
 # crappy data type inference function
 def detect_data_type(data):
@@ -60,11 +60,11 @@ def detect_type(x):
         return "array"
     elif isinstance(x, list):
         return "list"
-    elif isinstance(x, IrisImage):
+    elif isinstance(x, t.IrisImage):
         return "image"
-    elif isinstance(x, IrisModel):
+    elif isinstance(x, t.IrisModel):
         return "model"
-    elif isinstance(x, IrisData):
+    elif isinstance(x, t.IrisData):
         return "dataset"
     else:
         return str(type(x))
@@ -72,7 +72,7 @@ def detect_type(x):
 def env_vars(iris):
     out = []
     for k,v in iris.env.items():
-        key = k.name if isinstance(k, IrisValue) else k
+        key = k.name if isinstance(k, t.IrisValue) else k
         out.append({"name": key, "value": detect_type(v), "order": iris.env_order[k]})
     return out
 
@@ -93,6 +93,4 @@ def make_xy(meta, env):
             feature_index["y"][y.shape[1]-1] = vs["name"]
     if y.shape[1] == 1:
         y = y.reshape(y.shape[0])
-    from sklearn.cross_validation import cross_val_score
-    print(cross_val_score(LogisticRegression(), X, y, scoring="f1_macro", cv=5))
     return X,y,feature_index
