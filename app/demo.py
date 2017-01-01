@@ -16,7 +16,7 @@ class SaveEnv(IrisCommand):
     def command(self, name : t.String(question="What filename to save under?")):
         import pickle
         with open(name, 'wb') as f:
-            pickle.dump({"env":self.iris.env, "env_order":IRIS.env_order}, f)
+            pickle.dump({"env":self.iris.env, "env_order":self.iris.env_order}, f)
             return "Saved to {}.".format(name)
 
 saveEnv = SaveEnv()
