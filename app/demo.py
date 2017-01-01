@@ -3,7 +3,6 @@ import os
 sys.path.insert(0, os.path.abspath('..'))
 from iris import IRIS, IrisCommand
 from iris import iris_types as t
-from iris import primitives as iris_api # what is this?
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 import fileinput
@@ -14,7 +13,7 @@ class SaveEnv(IrisCommand):
     title = "save environment to {name}"
     examples = [ "save environment {name}",
                  "save env to {name}" ]
-    def command(name : t.String(question="What filename to save under?")):
+    def command(self, name : t.String(question="What filename to save under?")):
         import pickle
         with open(name, 'wb') as f:
             pickle.dump({"env":IRIS.env, "env_order":IRIS.env_order}, f)
@@ -26,7 +25,7 @@ class LoadEnv(IrisCommand):
     title = "load environment from {name}"
     examples = [ "load environment {name}",
                  "load env from {name}" ]
-    def command(name : t.String(question="What filename to load?")):
+    def command(self, name : t.String(question="What filename to load?")):
         import pickle
         with open(name, 'rb') as f:
             data = pickle.load(f)
@@ -40,7 +39,7 @@ class AddTwoNumbers(IrisCommand):
     title = "add two numbers: {x} and {y}"
     examples = [ "add {x} and {y}",
                  "add {x} and {y}" ]
-    def command(x : t.Int(), y : t.Int()):
+    def command(self, x : t.Int(), y : t.Int()):
         return x + y
 
 addTwoNumbers = AddTwoNumbers()
@@ -50,7 +49,7 @@ class AddAndStoreTwoNumbers(IrisCommand):
     examples = [ "add and store {x} and {y}",
                  "add and store {x} {y}" ]
     store_result = t.StoreName(question="Where would you like to store x+y?")
-    def command(x : t.Int(), y : t.Int()):
+    def command(self, x : t.Int(), y : t.Int()):
         return x + y
 
 addAndStoreTwoNumbers = AddAndStoreTwoNumbers()
@@ -59,7 +58,7 @@ class PearsonCorrelation(IrisCommand):
     title = "pearson correlation: {x} and {y}"
     examples = [ "pearson correlation between {x} and {y}",
                  "pearson correlation {x} {y}" ]
-    def command(x : t.Array(), y : t.Array()):
+    def command(self, x : t.Array(), y : t.Array()):
         from scipy.stats import pearsonr
         return pearsonr(x,y)
     def explanation(corr_pval):
@@ -84,15 +83,19 @@ class MakeModel(IrisCommand):
     argument_types = { "x_features": t.ArgList(),
                        "y_classes": t.ArgList() }
     store_result = t.StoreName(question="What should I call the model?")
-    def command(x_features, y_classes):
+    def command(self, x_features, y_classes):
         model = LogisticRegression()
         X = np.array(x_features).T
         y = np.array(y_classes).T
         y = y.reshape(y.shape[0])
         model.fit(X,y)
+        if "names" in self.context:
+            name = self.context["names"][0].name
+        else:
+            name = None
         # we use IrisModel here because it retains a link to X, y data
         # this can be useful for cross-validation, etc.
-        return t.IrisModel(model, X, y)
+        return t.IrisModel(model, X, y, name=name)
 
 makeModel = MakeModel()
 
@@ -102,7 +105,7 @@ class TrainTestSplit(IrisCommand):
                  "split data into train and test" ]
     store_result = [ t.StoreName(question="Where to store training data?"),
                      t.StoreName(question="Where to store testing data?") ]
-    def command(x_features : t.ArgList(), y_classes : t.ArgList()):
+    def command(self, x_features : t.ArgList(), y_classes : t.ArgList()):
         from sklearn.model_selection import train_test_split
         xvals = np.array(x_features).T
         yvals = np.array(y_classes).T
@@ -118,7 +121,7 @@ class TrainModel(IrisCommand):
     title = "train {model} on {data}"
     examples = [ "train {model} {data}",
                  "train model {model} on data {data}" ]
-    def command(iris_model : t.Any(), iris_data : t.Any()):
+    def command(self, iris_model : t.Any(), iris_data : t.Any()):
         iris_model.model.fit(iris_data.X, iris_data.y)
     def explanation(*args):
         return "I fit the model."
@@ -132,13 +135,13 @@ class TestModel(IrisCommand):
     def __init__(self):
         metrics = { "Binary: report results for the class specified by pos_label. Data must be binary.": "binary",
                     "Micro: calculate metrics globally by counting the total true positives, false negatives and false positives.": "micro",
-                    "Macro: calculate metrics for each label, and find their unweighted mean. This does not take label imbalance into account.": "macro" }
+                    "Macro: calculate metrics for each label, and find their unweighted mean (does not take label imbalance into account).": "macro" }
         select_classifier = t.Select(metrics, default="binary")
         self.argument_types = { "iris_model": t.Any(),
                                 "iris_data": t.Any(),
                                 "weighting": select_classifier }
         super().__init__()
-    def command(iris_model, iris_data, weighting):
+    def command(self, iris_model, iris_data, weighting):
         from sklearn.metrics import f1_score
         pred_y = iris_model.model.predict(iris_data.X)
         score = f1_score(iris_data.y, pred_y, average=weighting)
@@ -161,7 +164,7 @@ class CrossValidateModel(IrisCommand):
                                 "score": select_metric,
                                 "n": t.Int() }
         super().__init__()
-    def command(model, score, n):
+    def command(self, model, score, n):
         from sklearn.cross_validation import cross_val_score
         return cross_val_score(model.model, model.X, model.y, scoring = score, cv=n)
     def explanation(score):
@@ -176,7 +179,7 @@ class ComputeAUC(IrisCommand):
     examples = [ "auc curve {model}",
                  "auc data for {model}" ]
     store_result = t.StoreName(question="Where do you want to save the auc data?")
-    def command(model : t.Any()):
+    def command(self, model : t.Any()):
         from sklearn.metrics import roc_curve, auc
         from sklearn.model_selection import train_test_split
         from sklearn.preprocessing import label_binarize
@@ -220,23 +223,23 @@ class PlotAUCFromData(IrisCommand):
                  "plot {data} auc" ]
     argument_types = { "data": t.Any(question="Where is the auc curve data?") }
     store_result = t.StoreName(question="What would you like to name the plot?")
-    def command(data):
+    def command(self, data):
         import matplotlib
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
         fpr, tpr, roc_auc, n_classes = data["fpr"], data["tpr"], data["roc_auc"], data["n_classes"]
+        # this is annoyingly magical, we want to pull the user-specified 'StoreName' to label the figure
+        name = self.context["names"][0]
         # Plot all ROC curves
         f = plt.figure(name.id)
         plt.plot(fpr["micro"], tpr["micro"],
                  label='micro-average ROC curve (area = {0:0.2f})'
                        ''.format(roc_auc["micro"]),
                  color='deeppink', linestyle=':', linewidth=4)
-
         plt.plot(fpr["macro"], tpr["macro"],
                  label='macro-average ROC curve (area = {0:0.2f})'
                        ''.format(roc_auc["macro"]),
                  color='navy', linestyle=':', linewidth=4)
-
         for i in range(n_classes):
             plt.plot(fpr[i], tpr[i],
                      label='ROC curve of class {0} (area = {1:0.2f})'
@@ -248,91 +251,104 @@ class PlotAUCFromData(IrisCommand):
         plt.ylabel('True Positive Rate')
         plt.title('Some extension of Receiver operating characteristic to multi-class')
         plt.legend(loc="lower right")
-        return iris_api.send_plot(f, name)
+        return t.IrisImage(f, name.name)
 
 plotAUCFromData = PlotAUCFromData()
 
-# @iris.register("plot auc curve from {data}")
-# def plot_auc_data(data : Any(question="Where is the auc plot data?"), name : Name()):
-#     import matplotlib
-#     matplotlib.use('AGG')
-#     import matplotlib.pyplot as plt
-#     fpr, tpr, roc_auc, n_classes = data["fpr"], data["tpr"], data["roc_auc"], data["n_classes"]
-#     # Plot all ROC curves
-#     f = plt.figure(name.id)
-#     plt.plot(fpr["micro"], tpr["micro"],
-#              label='micro-average ROC curve (area = {0:0.2f})'
-#                    ''.format(roc_auc["micro"]),
-#              color='deeppink', linestyle=':', linewidth=4)
-#
-#     plt.plot(fpr["macro"], tpr["macro"],
-#              label='macro-average ROC curve (area = {0:0.2f})'
-#                    ''.format(roc_auc["macro"]),
-#              color='navy', linestyle=':', linewidth=4)
-#
-#     for i in range(n_classes):
-#         plt.plot(fpr[i], tpr[i],
-#                  label='ROC curve of class {0} (area = {1:0.2f})'
-#                  ''.format(i, roc_auc[i]))
-#     plt.plot([0, 1], [0, 1], 'k--')
-#     plt.xlim([0.0, 1.0])
-#     plt.ylim([0.0, 1.05])
-#     plt.xlabel('False Positive Rate')
-#     plt.ylabel('True Positive Rate')
-#     plt.title('Some extension of Receiver operating characteristic to multi-class')
-#     plt.legend(loc="lower right")
-#     return iris_api.send_plot(f, name)
-#
-# @iris.register("plot auc curve for {model}")
-# def plot_auc(model : Any(), name : Name()):
-#     import matplotlib
-#     matplotlib.use('AGG')
-#     import matplotlib.pyplot as plt
-#     data = compute_auc(model, None)
-#     return plot_auc_data(data, name)
-#
-# # compare models
-#
-# @iris.register("compare {model1} and {model2}")
-# def make_model(model1 : Any(), model2 : Any()):
-#     import numpy as np
-#     m1_scores = np.average(cross_validate_model(model1, "f1_macro", 10))
-#     m2_scores = np.average(cross_validate_model(model2, "f1_macro", 10))
-#     if m1_scores > m2_scores:
-#         higher_m, lower_m = model1, model2
-#         higher_s, lower_s = m1_scores, m2_scores
-#     else:
-#         higher_m, lower_m = model2, model1
-#         higher_s, lower_s = m2_scores, m1_scores
-#     return "I'd say \"{}\" is better than \"{}\", with {} vs. {} f1_macro".format(higher_m.name, lower_m.name, higher_s, lower_s)
-#
-#
-# @iris.register("plot a histogram on {data}")
-# def plot_histogram(data : Any(), name : Name()):
-#     import matplotlib
-#     matplotlib.use('AGG')
-#     import matplotlib.pyplot as plt
-#     f = plt.figure(name.id)
-#     plt.hist(data)
-#     return iris_api.send_plot(f, name)
-#
-# select_classifier = Select(classifier_scores, default="accuracy")
-#
-# explain = lambda x: "The best l2 score is {} with cross-validation performance of {} {}".format(x[0], round(x[1],4), x[2])
-#
-# @iris.register("find the best regularization parameter for {model} with {score}", format_out=explain)
-# def find_regularize(model : Any(), scoring : select_classifier):
-#     from sklearn.cross_validation import cross_val_score
-#     import numpy as np
-#     best_score = 0
-#     best_c = None
-#     for c in [0.01, 0.1, 1, 10, 100]:
-#         score = np.average(cross_val_score(model.model, model.X, model.y, scoring = scoring, cv=5))
-#         if score > best_score:
-#             best_score = score
-#             best_c = c
-#     return best_c, best_score, scoring
-#
+# NEW
+
+class PlotAUC(IrisCommand):
+    title = "plot auc curve for {model}"
+    examples = [ "plot auc curve for model {model}" ]
+    store_result = t.StoreName(question="What would you like to name the plot?")
+    def command(self, model : t.Any()):
+        import matplotlib
+        matplotlib.use('AGG')
+        import matplotlib.pyplot as plt
+        data = computeAUC(model)
+        # thread through the 'name' from self
+        return plotAUCFromData.with_context(self.context)(data)
+
+plotAUC = PlotAUC()
+
+class CompareModels(IrisCommand):
+    title = "compare {model1} and {model2} using {metric}"
+    examples = [ "compare {model1} {model2} using {metric}",
+                 "which model is better under {metric}, {model1} or {model2}" ]
+    def __init__(self):
+        metrics = { "Accuracy: correct predictions / incorrect predictions": "accuracy",
+                    "F1 macro: f1 score computed with average across classes": "f1_macro",
+                    "F1 micro: f1 score computed with weighted average": "f1_micro" }
+        select_metric = t.Select(metrics, default="accuracy")
+        self.argument_types = { "model1": t.Any(),
+                                "model2": t.Any(),
+                                "metric": select_metric }
+        super().__init__()
+    def command(self, model1, model2, metric):
+        import numpy as np
+        m1_scores = np.average(crossValidateModel(model1, metric, 10))
+        m2_scores = np.average(crossValidateModel(model2, metric, 10))
+        if m1_scores > m2_scores:
+            higher_m, lower_m = model1, model2
+            higher_s, lower_s = m1_scores, m2_scores
+        else:
+            higher_m, lower_m = model2, model1
+            higher_s, lower_s = m2_scores, m1_scores
+        return (higher_m.name, higher_s), (lower_m.name, lower_s)
+    def explanation(results):
+        higher_tuple, lower_tuple = results
+        higher_name, lower_name = [x[0] for x in [higher_tuple, lower_tuple]]
+        higher_score, lower_score = [round(x[1],4) for x in [higher_tuple, lower_tuple]]
+        return "I'd say \"{}\" is better than \"{}\", with {} vs. {}".format(higher_name, lower_name, higher_score, lower_score)
+
+compareModels = CompareModels()
+
+class PlotHistogram(IrisCommand):
+    title = "plot a histogram on {data}"
+    examples = [ "plot histogram {data}",
+                 "histogram {data}" ]
+    store_result = t.StoreName(question="Where would you like to save the plot?")
+    def command(self, data : t.Any()):
+        import matplotlib
+        matplotlib.use('AGG')
+        import matplotlib.pyplot as plt
+        name = self.context["names"][0]
+        f = plt.figure(name.id)
+        plt.hist(data)
+        return t.IrisImage(f, name.name)
+
+plotHistogram = PlotHistogram()
+
+class FindRegularization(IrisCommand):
+    title = "find the best l2 regularization parameter for {model} with {metric}"
+    examples = [ "best regularization for {model} {metric}",
+                 "best l2 parameter for {model} under {metric}" ]
+    def __init__(self):
+        metrics = { "Accuracy: correct predictions / incorrect predictions": "accuracy",
+                    "F1 macro: f1 score computed with average across classes": "f1_macro",
+                    "F1 micro: f1 score computed with weighted average": "f1_micro" }
+        select_metric = t.Select(metrics, default="accuracy")
+        self.argument_types = { "model": t.Any(),
+                                "metric": select_metric }
+        super().__init__()
+    def command(self, model, metric):
+        from sklearn.cross_validation import cross_val_score
+        import numpy as np
+        best_score = 0
+        best_c = None
+        for c in [0.01, 0.1, 1, 10, 100]:
+            score = np.average(crossValidateModel(model, metric, 5))
+            if score > best_score:
+                best_score = score
+                best_c = c
+        return best_c, best_score, metric
+    def explanation(results):
+        best_c, best_score, metric = results
+        return "Best L2 of {} with {} {}".format(best_c, best_score, metric)
+
+findRegularization = FindRegularization()
+
+
 # @iris.register("list features")
 # def list_features():
 #     return iris.env.keys()

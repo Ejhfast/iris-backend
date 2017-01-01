@@ -1,5 +1,5 @@
 from . import util
-from .core_new import IRIS
+from .core import IRIS
 from . import iris_types as t
 
 def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
@@ -12,8 +12,8 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         learn, lcmd = iris.learn_from_example(cls_idx, query, for_ex)
         result = iris.class_functions[cls_idx]["function"](*args)
         iris.train_model()
-        # if isinstance(result, IrisImage):
-        #     result = {"type":"image", "value":result.value}
+        if isinstance(result, t.IrisImage):
+            result = {"type":"image", "value":result.value}
         # elif isinstance(result, IrisValue):
         #     # FIXME: support this better, mutliple iris values
         #     if isinstance(result, IrisValues):
@@ -21,8 +21,8 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         #     else:
         #         name = result.name
         #     result = "I stored the result in \"{}\"".format(name)
-        # else:
-        result = iris.class2format[cls_idx](result)
+        else:
+            result = iris.class2format[cls_idx](result)
         if learn:
             result = ["(I learned how to \"{}\")".format(lcmd),result]
         else:
