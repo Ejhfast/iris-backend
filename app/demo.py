@@ -16,7 +16,7 @@ class SaveEnv(IrisCommand):
     def command(self, name : t.String(question="What filename to save under?")):
         import pickle
         with open(name, 'wb') as f:
-            pickle.dump({"env":IRIS.env, "env_order":IRIS.env_order}, f)
+            pickle.dump({"env":self.iris.env, "env_order":IRIS.env_order}, f)
             return "Saved to {}.".format(name)
 
 saveEnv = SaveEnv()
@@ -29,8 +29,8 @@ class LoadEnv(IrisCommand):
         import pickle
         with open(name, 'rb') as f:
             data = pickle.load(f)
-            IRIS.env = data["env"]
-            IRIS.env_order = data["env_order"]
+            self.iris.env = data["env"]
+            self.iris.env_order = data["env_order"]
             return "Loaded environment from \"{}\".".format(name)
 
 loadEnv = LoadEnv()
