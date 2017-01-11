@@ -10,7 +10,6 @@ from . import util
 class IrisBase:
 
     def __init__(self):
-        self.mappings = {}
         self.cmd2class = {}
         self.class2cmd = defaultdict(list)
         self.class_functions = {}
@@ -18,8 +17,6 @@ class IrisBase:
         self.vectorizer = CountVectorizer()
         self.env = {}
         self.env_order = {}
-        self.class2title = {}
-        self.class2format = {}
 
     def iris(self):
         return self
@@ -55,59 +52,43 @@ class IrisBase:
 
     def get_predictions(self, text, n=1):
         predictions = self.predict_input(text)[0].tolist()
-        sorted_predictions = sorted([(i,self.class2cmd[i],x) for i,x in enumerate(predictions)],key=lambda x: x[-1], reverse=True)
+        sorted_predictions = sorted([(i,self.class2cmd[i],x) for i,x in enumerate(predictions)], key=lambda x: x[-1], reverse=True)
         return sorted_predictions[:n]
-
 
     # placeholder for something that needs to convert string input into a python value
     def magic_type_convert(self, x, type_):
-        return type_.convert_type(x, self.env)
+        return type_.convert_type(x)+(x,)
 
 IRIS = IrisBase()
 
-# Base class for iris command, which new commands will extend
 class IrisCommand:
     title = None
-    examples = None
-    argument_types = None
+    examples = []
+    argument_types = {}
     store_result = None
-    result_questions = None
+    help_text = None
     context = {}
 
-    # next step, wrap the function here with extra types specified by the storage option
     def __init__(self, iris=IRIS):
         self.iris = iris
-        # command, etc. are static class-level commands, don't want a reference to instance object
-        class_ = self.__class__
-        title, examples, explanation, func = self.title, self.examples, class_.explanation, class_.command
-        inner_examples = [title]
-        if len(examples) > 0:
-            inner_examples = examples
-        # sketchy hack to get function arg names CPython
-        # :1 to remove self
-        f_args = func.__code__.co_varnames[:func.__code__.co_argcount][1:]
-        self.num_args = len(f_args)
-        if any(func.__annotations__):
-            f_types = func.__annotations__
-        elif self.argument_types:
-            f_types = self.argument_types
-        else:
+        # hack to get function arg names CPython (:1 to remove "self")
+        self.command_args = self.command.__code__.co_varnames[:self.command.__code__.co_argcount][1:]
+        self.all_args = self.command_args
+        if any(self.command.__annotations__):
+            self.argument_types = {**self.command.__annotations__, **self.argument_types}
+        if not self.argument_types and len(self.command_args) > 0:
             raise Exception("Need annotations on command types")
         if self.store_result:
             for i, store_val in enumerate(util.single_or_list(self.store_result)):
                 if store_val:
                     name_ = "name{}".format(i)
-                    f_types[name_] = store_val
-                    f_args = f_args + (name_,)
+                    self.argument_types[name_] = store_val
+                    self.all_args = self.all_args + (name_,)
         # the unique index for this function
         new_index = len(iris.class_functions)
-        iris.class_functions[new_index] = {"function":self.wrap_command, "args":f_args, "types":f_types}
-        iris.class2title[new_index] = title
-        iris.class2format[new_index] = explanation
-        for command_string in inner_examples:
+        iris.class_functions[new_index] = self
+        for command_string in self.training_examples():
             lower_command = command_string.lower()
-            print(new_index, lower_command)
-            iris.mappings[lower_command] = {"function":self.wrap_command, "args":f_args}
             iris.cmd2class[lower_command] = new_index
             iris.class2cmd[new_index].append(lower_command)
 
@@ -115,17 +96,37 @@ class IrisCommand:
     def __call__(self, *args):
         return self.command(*args)
 
+    def num_command_args(self):
+        return len(self.command_args)
+
+    def training_examples(self):
+        return [self.title] + self.examples
+
     # the logic of a given command
     def command(*args):
         pass
 
+    def wrap_explanation(self, *args):
+        results = []
+        if self.store_result:
+            names = [n.name for n in self.context["names"]]
+            results.append("Stored data in " + " and ".join(names))
+        for r in util.single_or_list(self.explanation(*args)):
+            results.append(r)
+        return results
+
     # how the present the result of a command to the user
     # by default we will return a string representation
-    def explanation(*args):
-        if len(args) == 1:
-            return str(args[0])
-        else:
-            return str(args)
+    def explanation(self, *args):
+        results = []
+        for r in args:
+            if isinstance(r, t.IrisImage):
+                results.append({"type": "image", "value": r.value})
+            elif util.is_data(r):
+                results.append({"type": "data", "value": util.prettify_data(r)})
+            else:
+                results.append(str(r))
+        return results
 
     # borrow context (e.g., list of storage names) before executing
     def with_context(self, context):
@@ -141,11 +142,11 @@ class IrisCommand:
     def wrap_command(self, *args, **kwargs):
         name = None
         if self.store_result:
-            names = args[self.num_args:]
+            names = args[self.num_command_args():]
             # store for possible use by command
             # note: if used by command, command is no longer stand-alone
             self.context["names"] = names
-            args = args[:self.num_args]
+            args = args[:self.num_command_args()]
         results = self(*args, **kwargs)
         if self.store_result:
             if isinstance(results, tuple):
@@ -158,26 +159,3 @@ class IrisCommand:
                 self.iris.env[name.name] = result
                 self.iris.env_order[name.name] = len(self.iris.env_order)
         return results
-
-        #
-        # class_ = self.__class__
-        # result = class_.command(*args, **kwargs)
-        # if isinstance(result, tuple):
-        #     memory_value = class_.memory(*result)
-        # else:
-        #     memory_value = class_.memory(result)
-        # print(memory_value)
-        # if isinstance(memory_value, IrisValue):
-        #     iris = self.iris
-        #     # for id values, we are keeping the iris object
-        #     if isinstance(memory_value, IrisId):
-        #         iris.env[memory_value.name] = memory_value
-        #         iris.env_order[memory_value.name] = len(iris.env_order)
-        #     elif isinstance(memory_value, IrisValues):
-        #         for name, value in zip(memory_value.names, memory_value.values):
-        #             iris.env[name] = value
-        #             iris.env_order[name] = len(iris.env_order)
-        #     else:
-        #         iris.env[memory_value.name] = memory_value.value
-        #         iris.env_order[memory_value.name] = len(iris.env_order)
-        # return memory_value

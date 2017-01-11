@@ -100,6 +100,9 @@ class StoreName(String):
 
     def is_type(self, value): return True
 
+    def convert_type(self, value, env):
+        return self.fail_check(value, env)
+
     def fail_check(self, value, env):
         try:
             StoreName.global_id += 1 # sketchy

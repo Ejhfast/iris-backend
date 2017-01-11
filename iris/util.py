@@ -1,4 +1,7 @@
 import shlex
+from . import iris_types as t
+import numpy as np
+import json
 
 def single_or_list(x):
     if isinstance(x, list):
@@ -8,14 +11,50 @@ def single_or_list(x):
     else:
         return [x]
 
+def is_data(result):
+    if isinstance(result, np.ndarray):
+        return True
+    elif isinstance(result, dict):
+        return True
+    else:
+        return False
+
+def prettify_data(result):
+    if isinstance(result, np.ndarray):
+        return np.array_str(result)
+    elif isinstance(result, dict):
+        return json.dumps(result, indent=4, default=str)
+    return result
+
+def transform_select_map(map_, cmd_object, env):
+    newd = {}
+    for arg,v in map_.items():
+        newd[arg] = v
+        type_ = cmd_object.argument_types[arg]
+        if isinstance(type_, t.Select):
+            print(type_)
+            try:
+                select_data = type_.convert_type(v, env)[1]
+                print(select_data)
+                newd[arg] = select_data
+            except:
+                pass
+    return newd
+
 # state machine util, conversation parsing
 
 def get_start_message(messages): return messages[0]["text"]
-def get_classification_message(messages): return messages[-1]["text"]
+def get_last_message(messages): return messages[-1]["text"]
 def get_resolve_args_message(messages): return messages[0]["text"]
 
 def verify_response(text):
     if text.lower() == "yes":
+        return True
+    else:
+        return False
+
+def verify_explain(text):
+    if any([x in text.lower() for x in ["explain", "tell me more", "say more"]]):
         return True
     else:
         return False
