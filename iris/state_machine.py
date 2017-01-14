@@ -3,6 +3,24 @@ from .core import IRIS
 from . import iris_types as t
 from . import dynamic_state as ds
 
+def process_succ_failure2(iris, cmd_object, arg_map, query):
+    results = []
+    for_ex = [(arg, arg_map[arg], True) for arg in cmd_object.all_args]
+    args = [arg_map[arg] for arg in cmd_object.all_args]
+    learn, lcmd = iris.learn_from_example(cmd_object.get_class_index(), query, for_ex)
+    if learn:
+        results.append("(I learned how to \"{}\")".format(lcmd))
+    result = cmd_object.wrap_command(*args)
+    iris.train_model()
+    explanations = cmd_object.wrap_explanation(result)
+    if isinstance(explanations, list):
+        for explanation in explanations:
+            results.append(explanation)
+    else:
+        results.append(explanations)
+    return results
+
+
 def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
     succs = [x[0] for x in s_args]
     args = [x[1] for x in s_args]
@@ -13,6 +31,7 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         results = []
         learn, lcmd = iris.learn_from_example(cls_idx, query, for_ex)
         if learn:
+            print("I learned")
             results.append("(I learned how to \"{}\")".format(lcmd))
         result = iris.class_functions[cls_idx].wrap_command(*args)
         iris.train_model()
@@ -28,6 +47,7 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
                 results.append(explanation)
         else:
             results.append(explanations)
+        print(results)
         return results
     else:
         # kind of obnoxious that I am doing string construction here...
@@ -36,6 +56,46 @@ def process_succ_failure(iris, cls_idx, s_args, arg_names, query):
         arg_assumptions = [assump(x[0],x[1]) for x in triples if x[2] == True]
         arg_problems = [problem(x[0],x[1]) for x in triples if x[2] == False]
         return ["I ran into a problem:"] + arg_assumptions + arg_problems
+
+
+class StateMachine2:
+    def __init__(self, iris = IRIS):
+        self.machine = ds.StateMachineRunner(ds.IrisMachine())
+        self.iris = iris
+    def state_machine(self, data):
+        outputs = []
+        if not "first_call" in data:
+            print("in not first call")
+            text = util.get_last_message(data["messages"])
+            keep_going = self.machine.next_state(text)
+            # if we're done
+            if not keep_going:
+                print("ending it")
+                out = self.machine.current_state
+                return {"state":"START", "text": outputs }
+            else:
+                print("in alt not first call")
+                for o in self.machine.current_output():
+                    outputs.append(o)
+                keep_going, more_outputs = self.machine.run_until_input_required()
+                if not keep_going:
+                    print("ending alt")
+                    # this all needs to happen via APIs
+                    class_id = self.machine.current_state.context["ASSIGNMENTS"]["user_class"]
+                    cmd_object = self.iris.class_functions[class_id]
+                    label = cmd_object.title.upper()
+                    arg_map = {arg: self.machine.current_state.context["ASSIGNMENT_NAMES"][arg] for arg in cmd_object.all_args}
+                    self.machine.reset()
+                    return {"state":"START", "text": outputs + more_outputs, "label":label, "arg_map": arg_map }
+                return {"state": "RECURSE", "text": outputs + more_outputs}
+        else:
+            print("in first call")
+            outputs.append(self.machine.current_output())
+            keep_going, more_outputs = self.machine.run_until_input_required()
+            if not keep_going:
+                print("ending first call")
+                return {"state":"START", "text": outputs }
+            return {"state": "RECURSE", "text": outputs + more_outputs}
 
 
 class StateMachine():
@@ -203,7 +263,8 @@ class StateMachine():
                 return self.state_machine({"state":"RESOLVE_ARGS", "messages": data["messages"]})
             else:
                 print("in alt not first call")
-                outputs.append(self.machine.current_output())
+                for o in self.machine.current_output():
+                    outputs.append(o)
                 keep_going, more_outputs = self.machine.run_until_input_required()
                 if not keep_going:
                     print("ending alt")

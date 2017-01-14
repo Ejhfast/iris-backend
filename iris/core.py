@@ -6,6 +6,7 @@ import os
 from . import iris_types as t
 from . import util
 
+# two things: 1) fix the no answer in "do you want this", 2) fix the name/value argument distinction
 
 class IrisBase:
 
@@ -31,11 +32,13 @@ class IrisBase:
 
     def learn_from_example(self, cls_idx, query_string, arg_triple):
         succs = [x[2] for x in arg_triple]
+        print("learning")
+        print(succs)
         if not all(succs):
             return False, None
         else:
             arg_map = {}
-            for name,val,_ in arg_triple: arg_map[val] = name
+            for name,val,_ in arg_triple: arg_map[str(val)] = name
             transform = []
             query_words = query_string.lower().split()
             for w in query_words:
@@ -85,16 +88,19 @@ class IrisCommand:
                     self.argument_types[name_] = store_val
                     self.all_args = self.all_args + (name_,)
         # the unique index for this function
-        new_index = len(iris.class_functions)
-        iris.class_functions[new_index] = self
+        self.class_index = len(iris.class_functions)
+        self.iris.class_functions[self.class_index] = self
         for command_string in self.training_examples():
             lower_command = command_string.lower()
-            iris.cmd2class[lower_command] = new_index
-            iris.class2cmd[new_index].append(lower_command)
+            self.iris.cmd2class[lower_command] = self.class_index
+            self.iris.class2cmd[self.class_index].append(lower_command)
 
     # make class instances behave like functions
     def __call__(self, *args):
         return self.command(*args)
+
+    def get_class_index(self):
+        return self.class_index
 
     def num_command_args(self):
         return len(self.command_args)

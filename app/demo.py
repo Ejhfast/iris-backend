@@ -66,7 +66,8 @@ class DivideTwoNumbers(IrisCommand):
     help_text = [
         "This command performs division on two numbers, e.g., 'divide 6 and 3' will return 2"
     ]
-    def command(self, x : t.Int(), y : t.Int()):
+    store_result = dt.VarName("What would you like to call the result?")
+    def command(self, x : dt.Int("Int 1"), y : dt.Int("Int 2")):
         return x / y
 
 divideTwoNumbers = DivideTwoNumbers()
@@ -362,12 +363,12 @@ class PlotHistogram(IrisCommand):
     title = "plot a histogram on {data}"
     examples = [ "plot histogram {data}",
                  "histogram {data}" ]
-    store_result = t.StoreName(question="Where would you like to save the plot?")
+    store_result = dt.VarName(question="Where would you like to save the plot?")
     help_text = [
         "This command plots a histogram on the provided data.",
         "A histogram counts the number of datapoints that hold certain values."
     ]
-    def command(self, data : t.Any()):
+    def command(self, data : dt.EnvVar("What would you like to plot?")):
         import matplotlib
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
@@ -540,6 +541,26 @@ class TestLoop(IrisCommand):
         return dummy
 
 testLoop = TestLoop()
+
+
+class SoStupid(IrisCommand):
+    title = "stupid"
+    examples = [ "stupid stupid", "stupid " ]
+    def command(self, x : dt.Int("One"), y : dt.Int("twp")):
+        return x + y
+
+soStupid = SoStupid()
+
+class TestIrisLoop(IrisCommand):
+    title = "test iris"
+    examples = [ "test iris loop", "run iris" ]
+    argument_types = {
+        "dummy": dt.IrisMachine()
+    }
+    def command(self, dummy):
+        return dummy
+
+testLoop = TestIrisLoop()
 
 # x_val = dt.Variable("X")
 # y_val = dt.Variable("Y")
