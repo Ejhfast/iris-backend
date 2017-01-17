@@ -3,10 +3,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import CountVectorizer
 import sys
 import os
-from . import iris_types as t
+from . import iris_objects
 from . import util
-
-# two things: 1) fix the no answer in "do you want this", 2) fix the name/value argument distinction
+from . import state_machine as sm
 
 class IrisBase:
 
@@ -18,6 +17,18 @@ class IrisBase:
         self.vectorizer = CountVectorizer()
         self.env = {}
         self.env_order = {}
+        self.history = {"history": [], "currentConvo": { 'messages': [], 'title': None, 'hidden': False, 'id': 0, 'args': {} }}
+
+    def set_history(self, request):
+        self.history = request["conversation"]
+
+    def serialize_state(self):
+        return {"env":self.env, "env_order":self.env_order, "history":self.history}
+
+    def load_state(self, data):
+        self.env = data["env"]
+        self.env_order = data["env_order"]
+        self.history = data["history"]
 
     def iris(self):
         return self
@@ -41,7 +52,9 @@ class IrisBase:
             for name,val,_ in arg_triple: arg_map[str(val)] = name
             transform = []
             query_words = query_string.lower().split()
+            print(arg_map)
             for w in query_words:
+                print(w, w in arg_map)
                 if w in arg_map:
                     transform.append("{"+arg_map[w]+"}")
                 else:
@@ -64,12 +77,25 @@ class IrisBase:
 
 IRIS = IrisBase()
 
+# omg these closures...
+def gen_print_caller(help_state):
+    return lambda caller: sm.Print([help_state]).when_done(caller)
+
+# this one is more tricky, need to pass along when_done to the alternative help state machine
+def gen_state_caller(help_state):
+    def anon(caller):
+        if caller.get_when_done_state():
+            return help_state.add_middleware(sm.QuitMiddleware()).when_done(caller.get_when_done_state())
+        return help_state
+    return anon
+
 class IrisCommand:
     title = None
     examples = []
     argument_types = {}
+    argument_help = {}
     store_result = None
-    help_text = None
+    help_text = [ "This command has no help text." ]
     context = {}
 
     def __init__(self, iris=IRIS):
@@ -87,6 +113,18 @@ class IrisCommand:
                     name_ = "name{}".format(i)
                     self.argument_types[name_] = store_val
                     self.all_args = self.all_args + (name_,)
+        for arg, type in self.argument_types.items():
+            if arg in self.argument_help:
+                help_state = self.argument_help[arg]
+            else:
+                help_state = "No help available for this argument."
+            mw = []
+            if isinstance(help_state, str):
+                mw.append(sm.ExplainMiddleware(gen_print_caller(help_state)))
+                self.argument_types[arg].add_middleware(mw)
+            else:
+                mw.append(sm.ExplainMiddleware(gen_state_caller(help_state.set_arg_name(arg))))
+                self.argument_types[arg].add_middleware(mw)
         # the unique index for this function
         self.class_index = len(iris.class_functions)
         self.iris.class_functions[self.class_index] = self
@@ -126,7 +164,7 @@ class IrisCommand:
     def explanation(self, *args):
         results = []
         for r in args:
-            if isinstance(r, t.IrisImage):
+            if isinstance(r, iris_objects.IrisImage):
                 results.append({"type": "image", "value": r.value})
             elif util.is_data(r):
                 results.append({"type": "data", "value": util.prettify_data(r)})
@@ -164,4 +202,21 @@ class IrisCommand:
             for name, result in zip(names, util.single_or_list(results)):
                 self.iris.env[name.name] = result
                 self.iris.env_order[name.name] = len(self.iris.env_order)
+        return results
+
+    def state_machine_output(self, arg_map, arg_names, query):
+        results = []
+        for_ex = [(arg, arg_names[arg], True) for arg in self.all_args]
+        args = [arg_map[arg] for arg in self.all_args]
+        learn, lcmd = self.iris.learn_from_example(self.get_class_index(), query, for_ex)
+        if learn:
+            results.append("(I learned how to \"{}\")".format(lcmd))
+        result = self.wrap_command(*args)
+        self.iris.train_model()
+        explanations = self.wrap_explanation(result)
+        if isinstance(explanations, list):
+            for explanation in explanations:
+                results.append(explanation)
+        else:
+            results.append(explanations)
         return results

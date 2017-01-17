@@ -1,4 +1,5 @@
 from .core import IrisCommand, IRIS
-from .state_machine import StateMachine2
-from . import iris_types
+from .event_loop import EventLoop
+from . import iris_objects
+from . import state_types
 from . import util

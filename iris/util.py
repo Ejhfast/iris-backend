@@ -1,5 +1,4 @@
 import shlex
-from . import iris_types as t
 import numpy as np
 import json
 
@@ -26,21 +25,6 @@ def prettify_data(result):
         return json.dumps(result, indent=4, default=str)
     return result
 
-def transform_select_map(map_, cmd_object, env):
-    newd = {}
-    for arg,v in map_.items():
-        newd[arg] = v
-        type_ = cmd_object.argument_types[arg]
-        if isinstance(type_, t.Select):
-            print(type_)
-            try:
-                select_data = type_.convert_type(v, env)[1]
-                print(select_data)
-                newd[arg] = select_data
-            except:
-                pass
-    return newd
-
 # state machine util, conversation parsing
 
 def get_start_message(messages): return messages[0]["text"]
@@ -66,16 +50,6 @@ def extract_number(text):
         except:
             pass
     return False, None
-
-# this is for parsing args out of iris conversation
-def parse_message_args(messages):
-    fail_indexes = [i for i,x in enumerate(messages) if x["origin"] == "iris" and x["state"] == "RESOLVE_ARGS" ]
-    args = {}
-    for i in fail_indexes:
-        iris_ask = messages[i]["text"]
-        var = messages[i]["arg"] #iris_ask.split()[-1][:-1]
-        args[var] = messages[i+1]["text"]
-    return args
 
 # is this word an argument?
 def is_arg(s):

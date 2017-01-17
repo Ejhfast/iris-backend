@@ -2,8 +2,9 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath('..'))
 from iris import IRIS, IrisCommand
-from iris import iris_types as t
-from iris import dynamic_state as dt
+from iris import iris_objects
+from iris import state_types as t
+from iris import state_machine as sm
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 import fileinput
@@ -21,7 +22,7 @@ class SaveEnv(IrisCommand):
     def command(self, name : t.String(question="What filename to save under?")):
         import pickle
         with open(name, 'wb') as f:
-            pickle.dump({"env":self.iris.env, "env_order":self.iris.env_order}, f)
+            pickle.dump(self.iris.serialize_state(), f)
             return "Saved to {}.".format(name)
 
 saveEnv = SaveEnv()
@@ -37,8 +38,7 @@ class LoadEnv(IrisCommand):
         import pickle
         with open(name, 'rb') as f:
             data = pickle.load(f)
-            self.iris.env = data["env"]
-            self.iris.env_order = data["env_order"]
+            self.iris.load_state(data)
             return "Loaded environment from \"{}\".".format(name)
 
 loadEnv = LoadEnv()
@@ -48,29 +48,19 @@ class AddTwoNumbers(IrisCommand):
     examples = [ "add {x} and {y}",
                  "add {x} {y}" ]
     argument_types = {
-        "x": dt.Int("Please enter a number for x:"),
-        "y": dt.Int("Please enter a number for y:")
+        "x": t.Int("Please enter a number for x:"),
+        "y": t.Int("Please enter a number for y:")
+    }
+    argument_help = {
+        "x": sm.DoAll([sm.Print(["Let's just use 10."]), sm.ValueState(10)])
     }
     help_text = [
         "This command performs addition on two numbers, e.g., 'add 3 and 2' will return 5"
     ]
     def command(self, x, y):
-        return x + y
+        return x + y.gh
 
 addTwoNumbers = AddTwoNumbers()
-
-class DivideTwoNumbers(IrisCommand):
-    title = "divide two numbers: {x} and {y}"
-    examples = [ "divide {x} and {y}",
-                 "divide {x} {y}" ]
-    help_text = [
-        "This command performs division on two numbers, e.g., 'divide 6 and 3' will return 2"
-    ]
-    store_result = dt.VarName("What would you like to call the result?")
-    def command(self, x : dt.Int("Int 1"), y : dt.Int("Int 2")):
-        return x / y
-
-divideTwoNumbers = DivideTwoNumbers()
 
 class PearsonCorrelation(IrisCommand):
     title = "compute pearson correlation: {x} and {y}"
@@ -84,6 +74,10 @@ class PearsonCorrelation(IrisCommand):
         "And a coefficient near 0 indicates the absence of any relationship.",
         "This command returns a coefficient and a p-value that measures the degree of confidence in its significance."
     ]
+    argument_help = {
+        "x": "The x value should be an array from the current environment",
+        "y": "The y value should be an array from the current environment",
+    }
     def command(self, x : t.Array(), y : t.Array()):
         from scipy.stats import pearsonr
         return pearsonr(x,y)
@@ -105,7 +99,7 @@ class MakeModel(IrisCommand):
         "This command takes a list of input features, as arrays, that will be used to predict the category in question.",
         "It then takes the name of an array that corresponds to the category to be predicted."
     ]
-    store_result = t.StoreName(question="What should I call the model?")
+    store_result = t.VarName(question="What should I call the model?")
     def command(self, x_features, y_classes):
         model = LogisticRegression()
         X = np.array(x_features).T
@@ -118,7 +112,7 @@ class MakeModel(IrisCommand):
             name = None
         # we use IrisModel here because it retains a link to X, y data
         # this can be useful for cross-validation, etc.
-        return t.IrisModel(model, X, y, name=name)
+        return iris_objects.IrisModel(model, X, y, name=name)
     def explanation(self, results):
         return [] # do nothing
 
@@ -128,8 +122,8 @@ class TrainTestSplit(IrisCommand):
     title = "create training and test data splits"
     examples = [ "create train test data",
                  "split data into train and test" ]
-    store_result = [ t.StoreName(question="Where to store training data?"),
-                     t.StoreName(question="Where to store testing data?") ]
+    store_result = [ t.VarName(question="Where to store training data?"),
+                     t.VarName(question="Where to store testing data?") ]
     help_text = [
         "This command takes a dataset and splits it into training and testing data.",
         "By convention, training data is used to train a model, and testing data is used to evaluate a model's performance."
@@ -140,8 +134,8 @@ class TrainTestSplit(IrisCommand):
         yvals = np.array(y_classes).T
         yvals = yvals.reshape(yvals.shape[0])
         x_train, x_test, y_train, y_test = train_test_split(xvals, yvals, train_size=0.25)
-        train_data = t.IrisData(x_train, y_train)
-        test_data = t.IrisData(x_test, y_test)
+        train_data = iris_objects.IrisData(x_train, y_train)
+        test_data = iris_objects.IrisData(x_test, y_test)
         return train_data, test_data
 
 trainTestSplit = TrainTestSplit()
@@ -153,7 +147,7 @@ class TrainModel(IrisCommand):
     help_text = [
         "This command trains a model on a dataset. The model will be fit on the provided data."
     ]
-    def command(self, iris_model : t.Any(), iris_data : t.Any()):
+    def command(self, iris_model : t.EnvVar(), iris_data : t.EnvVar()):
         iris_model.model.fit(iris_data.X, iris_data.y)
     def explanation(self, *args):
         return "I fit the model."
@@ -173,9 +167,9 @@ class TestModelF1(IrisCommand):
         metrics = { "Binary: report results for the class specified by pos_label. Data must be binary.": "binary",
                     "Micro: calculate metrics globally by counting the total true positives, false negatives and false positives.": "micro",
                     "Macro: calculate metrics for each label, and find their unweighted mean (does not take label imbalance into account).": "macro" }
-        select_classifier = t.Select(metrics, default="binary")
-        self.argument_types = { "iris_model": t.Any(),
-                                "iris_data": t.Any(),
+        select_classifier = t.Select(options=metrics, default="binary")
+        self.argument_types = { "iris_model": t.EnvVar(),
+                                "iris_data": t.EnvVar(),
                                 "weighting": select_classifier }
         super().__init__()
     def command(self, iris_model, iris_data, weighting):
@@ -198,15 +192,27 @@ class CrossValidateModel(IrisCommand):
         "For each fold in n fold cross-validation, this command will train on n-1 folds and evaluate the model on the held out fold.",
         "The resulting scores will be averaged together as a measure of overall performance."
     ]
-    def __init__(self):
-        metrics = { "Accuracy: correct predictions / incorrect predictions": "accuracy",
-                    "F1 macro: f1 score computed with average across classes": "f1_macro",
-                    "F1 micro: f1 score computed with weighted average": "f1_micro" }
-        select_metric = t.Select(metrics, default="accuracy")
-        self.argument_types = { "model": t.Any(),
-                                "score": select_metric,
-                                "n": t.Int() }
-        super().__init__()
+    argument_types = {
+        "model": t.EnvVar(),
+        "score": t.Select(options={
+            "Accuracy: correct predictions / incorrect predictions": "accuracy",
+            "F1 macro: f1 score computed with average across classes": "f1_macro",
+            "F1 binary: f1 score computed on the positive class": "f1_binary"
+        }, default="accuracy"),
+        "n": t.Int()
+    }
+    argument_help = {
+        "score": t.YesNo(["I'm happy to help.",
+                          "Are the classes balanced in the data (does each class have the same number of examples)?"],
+                    yes=sm.DoAll([sm.Print(["Great, let's use accuracy"]), sm.ValueState("accuracy")]),
+                    no=t.YesNo("Do you have more than two classes?",
+                            yes=sm.DoAll([sm.Print(["Great, let's use f1_macro.",
+                                                    "That's a standard metric for mult-class analysis"]),
+                                              sm.ValueState("f1_macro")]),
+                            no=sm.DoAll([sm.Print(["Great, let's use f1_binary.",
+                                                   "That's the conventional metric for binary data."]),
+                                             sm.ValueState("f1_binary")])))
+    }
     def command(self, model, score, n):
         from sklearn.cross_validation import cross_val_score
         return cross_val_score(model.model, model.X, model.y, scoring = score, cv=n)
@@ -224,8 +230,8 @@ class ComputeAUC(IrisCommand):
     help_text = [
         "This command will compute the necessary data to plot an AUROC curve for a model."
     ]
-    store_result = t.StoreName(question="Where do you want to save the auc data?")
-    def command(self, model : t.Any()):
+    store_result = t.VarName(question="Where do you want to save the auc data?")
+    def command(self, model : t.EnvVar()):
         from sklearn.metrics import roc_curve, auc
         from sklearn.model_selection import train_test_split
         from sklearn.preprocessing import label_binarize
@@ -267,8 +273,8 @@ class PlotAUCFromData(IrisCommand):
     title = "plot auc curve from {data}"
     examples = [ "plot auc data {data}",
                  "plot {data} auc" ]
-    argument_types = { "data": t.Any(question="Where is the auc curve data?") }
-    store_result = t.StoreName(question="What would you like to name the plot?")
+    argument_types = { "data": t.EnvVar(question="Where is the auc curve data?") }
+    store_result = t.VarName(question="What would you like to name the plot?")
     help_text = [
         "This command takes pre-computed AUROC data and makes a plot."
     ]
@@ -277,7 +283,7 @@ class PlotAUCFromData(IrisCommand):
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
         fpr, tpr, roc_auc, n_classes = data["fpr"], data["tpr"], data["roc_auc"], data["n_classes"]
-        # this is annoyingly magical, we want to pull the user-specified 'StoreName' to label the figure
+        # this is annoyingly magical, we want to pull the user-specified 'VarName' to label the figure
         name = self.context["names"][0]
         # Plot all ROC curves
         f = plt.figure(name.id)
@@ -300,7 +306,7 @@ class PlotAUCFromData(IrisCommand):
         plt.ylabel('True Positive Rate')
         plt.title('Some extension of Receiver operating characteristic to multi-class')
         plt.legend(loc="lower right")
-        return t.IrisImage(f, name.name)
+        return iris_objects.IrisImage(f, name.name)
 
 plotAUCFromData = PlotAUCFromData()
 
@@ -309,12 +315,12 @@ plotAUCFromData = PlotAUCFromData()
 class PlotAUC(IrisCommand):
     title = "plot auc curve for {model}"
     examples = [ "plot auc curve for model {model}" ]
-    store_result = t.StoreName(question="What would you like to name the plot?")
+    store_result = t.VarName(question="What would you like to name the plot?")
     help_text = [
         "This command will plot an AUROC curve for a model.",
         "An AUROC curve shows the tradeoff between true positive and false positive rates for a model."
     ]
-    def command(self, model : t.Any()):
+    def command(self, model : t.EnvVar()):
         import matplotlib
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
@@ -332,9 +338,9 @@ class CompareModels(IrisCommand):
         metrics = { "Accuracy: correct predictions / incorrect predictions": "accuracy",
                     "F1 macro: f1 score computed with average across classes": "f1_macro",
                     "F1 micro: f1 score computed with weighted average": "f1_micro" }
-        select_metric = t.Select(metrics, default="accuracy")
-        self.argument_types = { "model1": t.Any(),
-                                "model2": t.Any(),
+        select_metric = t.Select(options=metrics, default="accuracy")
+        self.argument_types = { "model1": t.EnvVar(),
+                                "model2": t.EnvVar(),
                                 "metric": select_metric }
         super().__init__()
     help_text = [
@@ -363,19 +369,19 @@ class PlotHistogram(IrisCommand):
     title = "plot a histogram on {data}"
     examples = [ "plot histogram {data}",
                  "histogram {data}" ]
-    store_result = dt.VarName(question="Where would you like to save the plot?")
+    store_result = t.VarName(question="Where would you like to save the plot?")
     help_text = [
         "This command plots a histogram on the provided data.",
         "A histogram counts the number of datapoints that hold certain values."
     ]
-    def command(self, data : dt.EnvVar("What would you like to plot?")):
+    def command(self, data : t.EnvVar("What would you like to plot?")):
         import matplotlib
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
         name = self.context["names"][0]
         f = plt.figure(name.id)
         plt.hist(data)
-        return t.IrisImage(f, name.name)
+        return iris_objects.IrisImage(f, name.name)
 
 plotHistogram = PlotHistogram()
 
@@ -387,8 +393,8 @@ class FindRegularization(IrisCommand):
         metrics = { "Accuracy: correct predictions / incorrect predictions": "accuracy",
                     "F1 macro: f1 score computed with average across classes": "f1_macro",
                     "F1 micro: f1 score computed with weighted average": "f1_micro" }
-        select_metric = t.Select(metrics, default="accuracy")
-        self.argument_types = { "model": t.Any(),
+        select_metric = t.Select(options=metrics, default="accuracy")
+        self.argument_types = { "model": t.EnvVar(),
                                 "metric": select_metric }
         super().__init__()
     help_text = [
@@ -420,7 +426,7 @@ class PrintValue(IrisCommand):
     help_text = [
         "This command will display the underlying data for environment variables."
     ]
-    def command(self, value : t.Any()):
+    def command(self, value : t.EnvVar()):
         return value
 
 printValue = PrintValue()
@@ -507,8 +513,8 @@ class TTestHelp(IrisCommand):
         "This command walks you through choosing a t-test"
     ]
     argument_types = {
-        "choice": dt.YesNo("Is your data normally distributed?",
-            yes=dt.YesNo("Do your samples have equal variance?",
+        "choice": t.YesNo("Is your data normally distributed?",
+            yes=t.YesNo("Do your samples have equal variance?",
                 yes="use student's t-test",
                 no="use welch's t-test"
             ),
@@ -520,72 +526,31 @@ class TTestHelp(IrisCommand):
 
 tTestHelp = TTestHelp()
 
-x_val = dt.Variable("X")
-y_val = dt.Variable("Y")
 
-class TestLoop(IrisCommand):
-    title = "lets test the loop"
-    examples = [ "test loop" ]
-    argument_types = {
-        "dummy": dt.Label("main_loop", dt.ListStates([
-            dt.Assign(x_val, dt.Int("Choose the first int value")),
-            dt.Print("Just printing something to show that I can!"),
-            dt.Assign(y_val, dt.Int("Choose the second int value")),
-            dt.PrintF(lambda: "The sum of your values is {}".format(x_val.get_value() + y_val.get_value())),
-            dt.YesNo("Are you finished?",
-                yes="Bye",
-                no=dt.Jump("main_loop"))
-        ]))
-    }
-    def command(self, dummy):
-        return dummy
-
-testLoop = TestLoop()
-
-
-class SoStupid(IrisCommand):
-    title = "stupid"
-    examples = [ "stupid stupid", "stupid " ]
-    def command(self, x : dt.Int("One"), y : dt.Int("twp")):
-        return x + y
-
-soStupid = SoStupid()
-
-class TestIrisLoop(IrisCommand):
-    title = "test iris"
-    examples = [ "test iris loop", "run iris" ]
-    argument_types = {
-        "dummy": dt.IrisMachine()
-    }
-    def command(self, dummy):
-        return dummy
-
-testLoop = TestIrisLoop()
-
-# x_val = dt.Variable("X")
-# y_val = dt.Variable("Y")
+# x_val = t.Variable("X")
+# y_val = t.Variable("Y")
 #
-# script = dt.SequentialMachine()
+# script = t.SequentialMachine()
 #
-# script.add(dt.Assign(x_val, dt.Int("Please enter the first integer")))
+# script.add(t.Assign(x_val, t.Int("Please enter the first integer")))
 #
-# script.add(dt.Print("Thanks!"))
+# script.add(t.Print("Thanks!"))
 #
-# script.add(dt.Assign(y_val, dt.Int("Please enter the second integer")))
+# script.add(t.Assign(y_val, t.Int("Please enter the second integer")))
 #
 # def confirm_print():
 #     val1, val2 = x_val.get_value(), y_val.get_value()
 #     return "Awesome, I got {} and {}".format(val1, val2)
 #
-# script.add(dt.PrintF(confirm_print))
+# script.add(t.PrintF(confirm_print))
 #
 # def add_numbers():
 #     val1, val2 = x_val.get_value(), y_val.get_value()
 #     return "Sum is {}".format(val1 + val2)
 #
-# script.add(dt.PrintF(add_numbers))
+# script.add(t.PrintF(add_numbers))
 #
-# script.add(dt.Print("See you later!"))
+# script.add(t.Print("See you later!"))
 #
 # machine = script.compile()
 #
@@ -670,14 +635,14 @@ testLoop = TestIrisLoop()
 #     return sum(lst)
 #
 # @iris.register("count {lst}")
-# def count1(lst : Any()):
+# def count1(lst : EnvVar()):
 #     counts = defaultdict(int)
 #     for x in lst:
 #         counts[x] += 1
 #     return counts
 #
 # @iris.register("make indicator for {lst}")
-# def make_indicator(lst : Any()):
+# def make_indicator(lst : EnvVar()):
 #     keys = set(lst)
 #     index2key = {i:k for i,k in enumerate(keys)}
 #     key2index = {k:i for i,k in index2key.items()}
@@ -696,7 +661,7 @@ testLoop = TestIrisLoop()
 #     return iris.env
 #
 # @iris.register("print data", examples=["print data {x}", "{x}"])
-# def info(x : Any()):
+# def info(x : EnvVar()):
 #     return x
 #
 # @iris.register("list commands")

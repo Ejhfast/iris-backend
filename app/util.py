@@ -1,7 +1,7 @@
 from collections import defaultdict
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from iris import iris_types as t
+from iris import iris_objects
 
 # crappy data type inference function
 def detect_data_type(data):
@@ -60,11 +60,11 @@ def detect_type(x):
         return "array"
     elif isinstance(x, list):
         return "list"
-    elif isinstance(x, t.IrisImage):
+    elif isinstance(x, iris_objects.IrisImage):
         return "image"
-    elif isinstance(x, t.IrisModel):
+    elif isinstance(x, iris_objects.IrisModel):
         return "model"
-    elif isinstance(x, t.IrisData):
+    elif isinstance(x, iris_objects.IrisData):
         return "dataset"
     else:
         return str(type(x))
@@ -72,7 +72,7 @@ def detect_type(x):
 def env_vars(iris):
     out = []
     for k,v in iris.env.items():
-        key = k.name if isinstance(k, t.IrisValue) else k
+        key = k.name if isinstance(k, iris_objects.IrisValue) else k
         out.append({"name": key, "value": detect_type(v), "order": iris.env_order[k]})
     return out
 

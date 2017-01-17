@@ -6,7 +6,7 @@ import os
 import sys
 import aiohttp_cors
 import demo
-from iris import StateMachine2, IRIS
+from iris import EventLoop, IRIS
 import util
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
@@ -20,7 +20,7 @@ cors = aiohttp_cors.setup(app)
 
 content = None
 
-state_machine = StateMachine2()
+state_machine = EventLoop()
 IRIS.train_model()
 iris = IRIS
 
@@ -58,7 +58,6 @@ add_cors(app.router.add_route('POST', '/upload_react', process_csv))
 
 async def new_loop(request):
     question = await request.json()
-    print(question)
     response = state_machine.state_machine(question)
     response["origin"] = "iris"
     response["type"] = "ADD_SERVER_MESSAGE"
@@ -74,6 +73,21 @@ async def variables(request):
 
 add_cors(app.router.add_route('GET', '/variables', variables))
 
+async def history(request):
+    response = {"type": "UPDATE_HISTORY", "conversation": iris.history}
+    # print("history response", response)
+    return web.json_response(response)
+
+add_cors(app.router.add_route('GET', '/history', history))
+
+async def set_history(request):
+    question = await request.json()
+    print("setting history", question)
+    iris.set_history(question)
+    response = {"type": "UPDATE_HISTORY", "conversation": iris.history}
+    return web.json_response(response)
+
+add_cors(app.router.add_route('POST', '/set_history', set_history))
 
 async def import_data(request):
     data = await request.post()
