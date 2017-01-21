@@ -191,7 +191,10 @@ class IrisCommand:
             # note: if used by command, command is no longer stand-alone
             self.context["names"] = names
             args = args[:self.num_command_args()]
-        results = self(*args, **kwargs)
+        if len(args) > 0:
+            results = self(*args, **kwargs)
+        else:
+            results = self()
         if self.store_result:
             if isinstance(results, tuple):
                 if len(names) != len(results):
@@ -204,14 +207,13 @@ class IrisCommand:
                 self.iris.env_order[name.name] = len(self.iris.env_order)
         return results
 
-    def state_machine_output(self, arg_map, arg_names, query):
+    def state_machine_output(self, arg_map, arg_names, result, query):
         results = []
         for_ex = [(arg, arg_names[arg], True) for arg in self.all_args]
         args = [arg_map[arg] for arg in self.all_args]
         learn, lcmd = self.iris.learn_from_example(self.get_class_index(), query, for_ex)
         if learn:
             results.append("(I learned how to \"{}\")".format(lcmd))
-        result = self.wrap_command(*args)
         self.iris.train_model()
         explanations = self.wrap_explanation(result)
         if isinstance(explanations, list):

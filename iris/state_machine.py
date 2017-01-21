@@ -1,5 +1,5 @@
 # this contains all the primitives for constructing state machines
-
+from . import iris_objects
 def print_state(state):
     return "{}".format(state)
 
@@ -27,6 +27,7 @@ class StateMachineRunner:
     # reset machine
     def reset(self):
         self.current_state = self.original_state
+        self.original_state.reset()
         return self
     # proceed to next state for machine
     def next_state(self, text):
@@ -41,15 +42,15 @@ class StateMachine:
     def __init__(self):
         self.accepts_input = True
         self.error = None
-        self.context = { "ASSIGNMENTS": {}, "ASSIGNMENT_NAMES": {} }
+        self.context = { "ASSIGNMENTS": {}, "ASSIGNMENT_NAMES": {}, "assign": [] }
         self.when_done_state = None
         self.output = []
         self.middleware = []
-        self.middleware_test = None
     # this allows us to pass context, and gives an execution hook after context is set
     def __call__(self, context):
-        self.context = context
+        self.context = dict(context)
         return self
+    # add middleware to the state, will process input text and potentially make different choices
     def add_middleware(self, middleware):
         if isinstance(middleware, list):
             for m in middleware:
@@ -57,34 +58,38 @@ class StateMachine:
         else:
             self.middleware.append(middleware)
         return self
+    # does this machine support assignment
     def is_assignable(self):
         return False
+    # any kind of reset
+    def reset(self):
+        return self
     # once one machine is "done" (no explicit next state), do we want to do
     # something else? useful for lists of things to do, or loops
     def when_done(self, new_state):
         self.when_done_state = new_state
         return self
+    # getter for accepts_input (does this state need input from user)
     def get_accepts_input(self):
         return self.accepts_input
-    # getter, because we need override later
+    # getter for when_done state
     def get_when_done_state(self):
         return self.when_done_state
-    # getter context:
+    # getter for context:
     def get_context(self):
         return self.context
-    # thin wrapper on question, the source of output to user
+    # getter on output, the source of output to user
     def get_output(self):
         return self.output
     # set error message state
     def set_error(self, data=None):
-        print("setting error", data)
         self.error = data
         return self
     # clear error
     def clear_error(self):
         self.error = None
         return self
-    # how to compose error message
+    # tells machine how to generate error message
     def error_message(self):
         return self.output
     # wrap the next_state_base function, allow for linked-list style machines
@@ -98,8 +103,6 @@ class StateMachine:
         for middleware in self.middleware:
             if middleware.test(text):
                 new_out_tuple = middleware.transform(self, new_out_tuple)
-        print(self, new_out_tuple)
-        print(self.context)
         return new_out_tuple
     # placeholder for move to next state
     def next_state_base(self, text):
@@ -116,7 +119,9 @@ class Middleware:
 
 class QuitMiddleware(Middleware):
     def test(self, text):
-        return "quit" in text
+        if text:
+            return "quit" in text
+        return False
     def transform(self, caller, state_tuple):
         keep_going, state = state_tuple
         state.clear_error()
@@ -126,7 +131,9 @@ class ExplainMiddleware(Middleware):
     def __init__(self, gen_state):
         self.gen_state = gen_state
     def test(self, text):
-        return any([x in text for x in ["explain", "help"]])
+        if text:
+            return any([x in text for x in ["explain", "help"]])
+        return False
     def transform(self, caller, state_tuple):
         keep_going, state = state_tuple
         state.clear_error()
@@ -136,12 +143,13 @@ class ExplainMiddleware(Middleware):
 class AssignableMachine(StateMachine):
     arg_name = None
     def assign(self, value, name=None):
-        if not name:
-            name = self.string_representation(value)
-        if "assign" in self.context:
-            self.context["ASSIGNMENTS"][self.context["assign"]] = value
-            self.context["ASSIGNMENT_NAMES"][self.context["assign"]] = name
-            del self.context['assign']
+        # if not name:
+        #     name = self.string_representation(value)
+        if len(self.context["assign"]) > 0:
+            curr_assign = self.context["assign"].pop()
+            print("ASSIGN", curr_assign, value, name)
+            self.context["ASSIGNMENTS"][curr_assign] = value
+            self.context["ASSIGNMENT_NAMES"][curr_assign] = name
     def is_assignable(self):
         return True
     def set_arg_name(self, name):
@@ -218,7 +226,10 @@ class Assign(StateMachine):
         super().__init__()
         self.accepts_input = False
     def next_state_base(self, text):
-        self.context["assign"] = self.variable.name
+        if isinstance(self.variable, Variable):
+            self.context["assign"].append(self.variable.scope_name())
+        else:
+            self.context["assign"].append(self.variable)
         return True, self.assign_state
     def when_done(self, state):
         self.assign_state.when_done(state)
@@ -232,16 +243,26 @@ class Let(StateMachine):
         self.equal = equal
         self.accepts_input = False
     def next_state_base(self, text):
-        self.context["ASSIGNMENTS"][self.variable.name]=self.equal
+        self.context["ASSIGNMENTS"][self.variable.scope_name()]=self.equal
         return True, self.next_state_obj
 
 class Variable(StateMachine):
-    def __init__(self, name):
+    def __init__(self, name, scope=None):
         self.name = name
+        self.scope = scope
         super().__init__()
         self.accepts_input = False
+    def scope_name(self):
+        if self.scope:
+            return self.scope + "_" + self.name
+        return self.name
     def next_state_base(self, text):
-        return False, self.context["ASSIGNMENTS"][self.name]
+        print("VALUE", self.name, self.context)
+        return True, ValueState(self.get_value()).when_done(self.get_when_done_state())
+    def get_value(self):
+        return self.context["ASSIGNMENTS"][self.scope_name()]
+    def get_named_value(self):
+        return self.context["ASSIGNMENT_NAMES"][self.scope_name()]
 
 class SequentialMachine:
     def __init__(self):
@@ -259,7 +280,6 @@ class RestartMiddleware(StateMachine):
         self.output = next_state_obj(self.context).get_output()
 
     def next_state_base(self, text):
-        print("if", self.test(text), text, "quit" in text)
         if self.test(text):
             return self.next_state_obj.next_state_base(text)
         return self.label(self.context).next_state_base(text)
@@ -276,10 +296,36 @@ class ValueState(AssignableMachine):
         super().__init__()
         self.accepts_input = False
     def next_state_base(self, text):
-        self.assign(self.value)
+        if isinstance(self.value, iris_objects.IrisValue):
+            self.assign(self.value, name=self.value.name)
+        else:
+            self.assign(self.value)
         return False, self.value
 
 class Value:
     def __init__(self, result, context):
         self.result = result
         self.context = context
+
+class PrintVar(StateMachine):
+    def __init__(self, var, func):
+        self.var = var
+        self.func = func
+        super().__init__()
+        self.accepts_input = False
+    def next_state_base(self, text):
+        self.var(self.context)
+        name, named_value, value = self.var.name, self.var.get_named_value(), self.var.get_value()
+        return True, Print(self.func(name, named_value, value)).when_done(self.get_when_done_state())
+
+def state_wrapper(f):
+    def wrapper(*args):
+        class DummyState(StateMachine):
+            def next_state_base(self, text):
+                new_args = [arg(self.context).get_value() for arg in args]
+                result = f(*new_args)
+                if isinstance(result, StateMachine):
+                    return True, result.when_done(self.get_when_done_state())
+                return True, ValueState(result).when_done(self.get_when_done_state())
+        return DummyState()
+    return wrapper

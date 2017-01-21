@@ -1,6 +1,7 @@
 import shlex
 import numpy as np
 import json
+from . import iris_objects
 
 def single_or_list(x):
     if isinstance(x, list):
@@ -18,10 +19,20 @@ def is_data(result):
     else:
         return False
 
+def print_assignment(name, named_value, value):
+    print(value, type(value), named_value)
+    if not named_value or named_value == "COMMAND VALUE":
+        if is_data(value):
+            return ["For {}, I am using:".format(name), {"type":"data", "value":prettify_data(value)}]
+        if isinstance(value, iris_objects.IrisId):
+            return []
+        return ["I am using {} for {}.".format(value, name)]
+    return ["I am using {} for {}.".format(named_value, name)]
+
 def prettify_data(result):
     if isinstance(result, np.ndarray):
         return np.array_str(result)
-    elif isinstance(result, dict):
+    elif isinstance(result, dict) or isinstance(result, list):
         return json.dumps(result, indent=4, default=str)
     return result
 

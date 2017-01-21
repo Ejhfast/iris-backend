@@ -31,13 +31,11 @@ def add_cors(route):
                  allow_headers="*")})
 
 def parse_args(messages):
-    print(messages)
     fail_indexes = [i for i,x in enumerate(messages) if x["origin"] == "iris" and x["type"] == "ask" ]
     args = {}
     for i in fail_indexes:
         iris_ask = messages[i]["text"]
         var = iris_ask.split()[-1][:-1]
-        print(var)
         args[var] = messages[i+1]["text"]
     return args
 
@@ -82,7 +80,6 @@ add_cors(app.router.add_route('GET', '/history', history))
 
 async def set_history(request):
     question = await request.json()
-    print("setting history", question)
     iris.set_history(question)
     response = {"type": "UPDATE_HISTORY", "conversation": iris.history}
     return web.json_response(response)

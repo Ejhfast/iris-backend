@@ -10,6 +10,8 @@ from sklearn.linear_model import LogisticRegression
 import fileinput
 import numpy as np
 import math
+from iris import IrisMachine
+from fileupload import file_state
 
 class SaveEnv(IrisCommand):
     title = "save environment to {name}"
@@ -43,6 +45,49 @@ class LoadEnv(IrisCommand):
 
 loadEnv = LoadEnv()
 
+class GetArrayLength(IrisCommand):
+    title = "get length of array {arr}"
+    examples = ["array {} length"]
+    def command(self, arr: t.Array("What array to get length of?")):
+        return arr.shape[0]
+
+getArrayLength = GetArrayLength()
+
+class StoreCommand(IrisCommand):
+    title = "save value of an iris command"
+    examples = [ "assign iris command value" ]
+    store_result = t.VarName(question="Where would you like to save this result?")
+    def command(self, cmd_val : IrisMachine(output=["What command would you like to save?"])):
+        return cmd_val
+
+storeCommand = StoreCommand()
+
+class GenerateNumber(IrisCommand):
+    title = "generate a random number"
+    examples = [ "generate number" ]
+    def command(self):
+        import random
+        return random.randint(0,100)
+
+generateNumber = GenerateNumber()
+
+class GenerateArray(IrisCommand):
+    title = "generate a random array of {n} numbers"
+    examples = [ "generate numpy array of size {n}"]
+    def command(self, n : t.Int("Please enter size of array:")):
+        import numpy
+        return numpy.random.randint(100, size=n)
+
+generateArray = GenerateArray()
+
+class GenerateString(IrisCommand):
+    title = "generate a string"
+    examples = [ "generate string" ]
+    def command(self):
+        return "sdfdfd"
+
+generateString = GenerateString()
+
 class AddTwoNumbers(IrisCommand):
     title = "add two numbers: {x} and {y}"
     examples = [ "add {x} and {y}",
@@ -51,16 +96,56 @@ class AddTwoNumbers(IrisCommand):
         "x": t.Int("Please enter a number for x:"),
         "y": t.Int("Please enter a number for y:")
     }
-    argument_help = {
-        "x": sm.DoAll([sm.Print(["Let's just use 10."]), sm.ValueState(10)])
-    }
     help_text = [
         "This command performs addition on two numbers, e.g., 'add 3 and 2' will return 5"
     ]
     def command(self, x, y):
-        return x + y.gh
+        return x + y
 
 addTwoNumbers = AddTwoNumbers()
+
+class QuickConvo(IrisCommand):
+    title = "quick convo"
+    examples = ["quick convo"]
+    def __init__(self):
+        i1 = sm.Variable("i1")
+        i2 = sm.Variable("i2")
+        choice_message = sm.Variable("choice")
+        # apply "normal methods" to sm data
+        @sm.state_wrapper
+        def make_choice(x, y):
+            if x > y:
+                return "Your first number was too small"
+            else:
+                return "Good job."
+        sumit = sm.DoAll([
+            sm.Assign(i1, t.Int("What is first int?")),
+            sm.Assign(i2, t.Int("What is second int?")),
+            sm.Assign(choice_message, make_choice(i1, i2)),
+            choice_message
+        ])
+        self.argument_types = {
+            "logic": sumit
+        }
+        super().__init__()
+    def command(self, logic):
+        return logic
+
+quickConvo = QuickConvo()
+
+class LoadCSVData(IrisCommand):
+    title = "load csv data from {file}"
+    examples = ["load csv {file}"]
+    store_result = t.VarName("What would you like to call the dataframe?")
+    argument_types = {
+        "load_file": file_state
+    }
+    def command(self, load_file):
+        return load_file
+    def explanation(self, result):
+        return []
+
+loadCSVData = LoadCSVData()
 
 class PearsonCorrelation(IrisCommand):
     title = "compute pearson correlation: {x} and {y}"
@@ -197,7 +282,7 @@ class CrossValidateModel(IrisCommand):
         "score": t.Select(options={
             "Accuracy: correct predictions / incorrect predictions": "accuracy",
             "F1 macro: f1 score computed with average across classes": "f1_macro",
-            "F1 binary: f1 score computed on the positive class": "f1_binary"
+            "F1 binary: f1 score computed on the positive class": "f1"
         }, default="accuracy"),
         "n": t.Int()
     }
@@ -209,7 +294,7 @@ class CrossValidateModel(IrisCommand):
                             yes=sm.DoAll([sm.Print(["Great, let's use f1_macro.",
                                                     "That's a standard metric for mult-class analysis"]),
                                               sm.ValueState("f1_macro")]),
-                            no=sm.DoAll([sm.Print(["Great, let's use f1_binary.",
+                            no=sm.DoAll([sm.Print(["Great, let's use f1 (defaults to binary).",
                                                    "That's the conventional metric for binary data."]),
                                              sm.ValueState("f1_binary")])))
     }

@@ -66,6 +66,8 @@ def detect_type(x):
         return "model"
     elif isinstance(x, iris_objects.IrisData):
         return "dataset"
+    elif isinstance(x, iris_objects.IrisDataframe):
+        return "dataframe"
     else:
         return str(type(x))
 

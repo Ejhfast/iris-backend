@@ -10,9 +10,9 @@ def OR(tuple_list):
             return tuple
     return False, None
 
-def primitive_or_question(object, text):
+def primitive_or_question(object, text, doing_match):
     if isinstance(object, sm.StateMachine):
-        return object.convert_type(text)
+        return object.convert_type(text, doing_match)
     return object == text, text
 
 class EnvVar(sm.AssignableMachine):
@@ -38,14 +38,14 @@ class EnvVar(sm.AssignableMachine):
     def type_from_string(self, x):
         return False, None
 
-    def convert_type(self, text):
+    def convert_type(self, text, doing_match=False):
         if text in self.iris.env and self.is_type(self.iris.env[text]):
-            self.assign(self.iris.env[text], name=text)
+            if not doing_match: self.assign(self.iris.env[text], name=text)
             return True, self.iris.env[text]
         else:
             success, result = self.type_from_string(text)
             if success:
-                self.assign(result)
+                if not doing_match: self.assign(result, name=text)
                 return True, result
             return False, self.error_message(text)
 
@@ -103,6 +103,29 @@ class ArgList(EnvVar):
         if all([e in self.iris.env and self.is_type(self.iris.env[e]) for e in elements]):
             self.assign([self.iris.env[e] for e in elements])
             return True, [self.iris.env[e] for e in elements]
+        return False, self.error_message(text)
+
+class File(EnvVar):
+    def is_type(self, x):
+        try:
+            f = open(x, "r")
+            f.close()
+        except:
+            return False
+        return True
+
+    def get_content(self, x):
+        with open(x, "r") as f:
+            return f.read()#.decode('utf-8')
+
+    def error_message(self, text):
+        return ["I couldn't find {} in the environment. Please try again.".format(text)]
+
+    def convert_type(self, text, doing_match=False):
+        if self.is_type(text):
+            content = self.get_content(text)
+            if not doing_match: self.assign(content, name=text)
+            return True, content
         return False, self.error_message(text)
 
 class VarName(sm.AssignableMachine):
@@ -189,8 +212,8 @@ class Select(sm.AssignableMachine):
     def error_message(self, text):
         return ["{} is not a valid option".format(text)]
 
-    def convert_type(self, text):
-        return OR([primitive_or_question(value, text) for _, value in self.id2option.items()])
+    def convert_type(self, text, doing_match=False):
+        return OR([primitive_or_question(value, text, doing_match) for _, value in self.id2option.items()])
 
     def next_state_base(self, text):
         new_state = self
