@@ -51,8 +51,8 @@ class EnvVar(sm.AssignableMachine):
 
     def next_state_base(self, text):
         success, result = self.convert_type(text)
-        if success: return False, result
-        return True, self.set_error(result)
+        if success: return result
+        return self.set_error(result)
 
 class Int(EnvVar):
     def is_type(self, x):
@@ -140,7 +140,7 @@ class VarName(sm.AssignableMachine):
         success, result = self.convert_type(text)
         self.assign(result, text)
         VarName.global_id += 1
-        return False, result
+        return result
 
 class YesNo(sm.AssignableMachine):
     def __init__(self, question, yes=None, no=None):
@@ -167,11 +167,9 @@ class YesNo(sm.AssignableMachine):
         new_state = self
         if util.verify_response(text): new_state = self.yes
         else: new_state = self.no
-        if isinstance(new_state, sm.StateMachine):
-            return True, new_state
-        else:
+        if not isinstance(new_state, sm.StateMachine):
             self.assign(new_state)
-            return False, new_state
+        return new_state
 
     def when_done(self, state):
         if isinstance(self.yes, sm.StateMachine):
@@ -221,13 +219,10 @@ class Select(sm.AssignableMachine):
         if success:
             if choice in self.id2option:
                 new_state = self.id2option[choice]
-                if isinstance(new_state, sm.StateMachine):
-                    return True, new_state
-                else:
-                    # assuming primitive == name, may not always be good
+                if not isinstance(new_state, sm.StateMachine):
                     self.assign(new_state, new_state)
-                    return False, new_state
-        return True, self.set_error(self.error_message(text))
+                return new_state
+        return self.set_error(self.error_message(text))
 
     def when_done(self, next_state):
         for id, state in self.id2option.items():
@@ -246,7 +241,7 @@ class AddToIrisEnv(sm.StateMachine):
         self.accepts_input = False
     def next_state_base(self, text):
         self.iris.add_to_env(self.read_variable(self.env_name), self.read_variable(self.env_value))
-        return False, sm.Value(None, self.context)
+        return sm.Value(None, self.context)
 
 class Memory(sm.AssignableMachine):
     def __init__(self, iris = IRIS):
@@ -254,6 +249,5 @@ class Memory(sm.AssignableMachine):
         super().__init__()
         self.accepts_input = False
     def next_state_base(self, text):
-        print(self.iris.env)
         self.assign(self.iris.env["__MEMORY__"])
-        return False, self.iris.env["__MEMORY__"]
+        return self.iris.env["__MEMORY__"]

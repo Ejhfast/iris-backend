@@ -12,12 +12,9 @@ def single_or_list(x):
         return [x]
 
 def is_data(result):
-    if isinstance(result, np.ndarray):
+    if any([isinstance(result, x) for x in [np.ndarray, list, dict, tuple]]):
         return True
-    elif isinstance(result, dict):
-        return True
-    else:
-        return False
+    return False
 
 def print_assignment(name, named_value, value):
     print(value, type(value), named_value)
@@ -30,9 +27,12 @@ def print_assignment(name, named_value, value):
     return ["I am using {} for {}.".format(named_value, name)]
 
 def prettify_data(result):
-    if isinstance(result, np.ndarray):
-        return np.array_str(result)
-    elif isinstance(result, dict) or isinstance(result, list):
+    try:
+        np_transform = np.array(result)
+        return np.array_str(np_transform)
+    except:
+        pass
+    if isinstance(result, dict) or isinstance(result, list):
         return json.dumps(result, indent=4, default=str)
     return result
 

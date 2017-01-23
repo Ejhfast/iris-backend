@@ -62,7 +62,7 @@ class IrisMachine(sm.AssignableMachine):
                     yes=resolve_args,
                     no=options).add_middleware([explain_cmd, sm.QuitMiddleware()])
         # bind user_class to class_id, then run
-        return True, sm.Let(user_class, equal=class_id, then_do=confirm)
+        return sm.Let(user_class, equal=class_id, then_do=confirm)
 
     def when_done(self, new_state):
         self.when_done_state = new_state
@@ -74,27 +74,9 @@ class IrisMiddleware(sm.Middleware):
     def test(self, text):
         if text:
             return "command" in text
-    def transform(self, caller, state_tuple):
-        keep_going, state = state_tuple
+    def transform(self, caller, state):
         state.clear_error()
-        return True, IrisMachine(output = self.output, recursed=True).when_done(caller.get_when_done_state())
-
-class AskForArg(sm.StateMachine):
-    def __init__(self, arg, uniq=""):
-        super().__init__()
-        self.accepts_input = False
-        self.arg = arg
-        self.uniq = uniq
-        self.cmd_object = cmd_object
-        self.done_state_list = done_state_list
-    def next_state_base(self, text):
-        iris_middle = IrisMiddleware(["Sure, we can run another function to generate {}.".format(arg),
-                                      "What would you like to run?"])
-        type_machine =  cmd_object.argument_types[arg].set_arg_name(arg).add_middleware(iris_middle).reset()
-        arg_var = sm.Variable(arg, scope=self.uniq)
-        verify_arg = sm.PrintVar(arg_var, util.print_assignment)
-        assign_var = sm.Assign(arg_var, type_machine.add_middleware(sm.QuitMiddleware()))
-        return True, sm.DoAll(done_state_list + [assign_var, verify_arg])
+        return IrisMachine(output = self.output, recursed=True).when_done(caller.get_when_done_state())
 
 class ResolveArgs(sm.StateMachine):
     def __init__(self, class_id_var, iris = IRIS, uniq = "", recursed = False):
@@ -121,12 +103,12 @@ class ResolveArgs(sm.StateMachine):
                         done_state_list.append(sm.Print(["I am using {} for {}.".format(map_[arg], arg)]))
                     if all([arg in map_ for arg in cmd_object.all_args]):
                         to_exe = Execute(cmd_object, self.uniq, self.context["ASSIGNMENTS"], self.context["ASSIGNMENT_NAMES"], self.context[self.uniq + "_" + "query"], self.recursed)
-                        return True, sm.DoAll(done_state_list + [to_exe]).when_done(self.get_when_done_state())
+                        return sm.DoAll(done_state_list + [to_exe]).when_done(self.get_when_done_state())
                     for arg in cmd_object.all_args:
                         cmd_object.argument_types[arg].clear_error()
         if all([(self.uniq + "_" + arg) in self.context["ASSIGNMENTS"] for arg in cmd_object.all_args]):
             to_exe = Execute(cmd_object, self.uniq, self.context["ASSIGNMENTS"], self.context["ASSIGNMENT_NAMES"], self.context[self.uniq + "_" + "query"], self.recursed)
-            return True, to_exe.when_done(self.get_when_done_state())
+            return to_exe.when_done(self.get_when_done_state())
         for arg in cmd_object.all_args:
             if (not (self.uniq + "_" + arg) in self.context["ASSIGNMENTS"]):
                 iris_middle = IrisMiddleware(["Sure, we can run another function to generate {}.".format(arg),
@@ -135,7 +117,7 @@ class ResolveArgs(sm.StateMachine):
                 arg_var = sm.Variable(arg, scope=self.uniq)
                 verify_arg = sm.PrintVar(arg_var, util.print_assignment)
                 assign_var = sm.Assign(arg_var, type_machine.add_middleware(sm.QuitMiddleware()))
-                return True, sm.DoAll(done_state_list + [assign_var, verify_arg]).when_done(self)
+                return sm.DoAll(done_state_list + [assign_var, verify_arg]).when_done(self)
 
 def strip_key(key, dictionary):
     return {"_".join(k.split("_")[1:]):v for k,v in dictionary.items() if key == k.split("_")[0]}
@@ -161,8 +143,8 @@ class Execute(sm.AssignableMachine):
     def next_state_base(self, text):
         self.assign(self.raw_output, name="COMMAND VALUE")
         if isinstance(self.raw_output, sm.StateMachine):
-            return True, self.raw_output
-        return False, sm.Value(None, self.context)
+            return self.raw_output
+        return sm.Value(None, self.context)
 
 class EventLoop:
     def __init__(self, iris = IRIS):

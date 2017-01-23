@@ -105,35 +105,6 @@ class AddTwoNumbers(IrisCommand):
 
 addTwoNumbers = AddTwoNumbers()
 
-class QuickConvo(IrisCommand):
-    title = "quick convo"
-    examples = ["quick convo"]
-    def __init__(self):
-        i1 = sm.Variable("i1")
-        i2 = sm.Variable("i2")
-        choice_message = sm.Variable("choice")
-        # apply "normal methods" to sm data
-        @sm.state_wrapper
-        def make_choice(x, y):
-            if x > y:
-                return "Your first number was too small"
-            else:
-                return "Good job."
-        sumit = sm.DoAll([
-            sm.Assign(i1, t.Int("What is first int?")),
-            sm.Assign(i2, t.Int("What is second int?")),
-            sm.Assign(choice_message, make_choice(i1, i2)),
-            choice_message
-        ])
-        self.argument_types = {
-            "logic": sumit
-        }
-        super().__init__()
-    def command(self, logic):
-        return logic
-
-quickConvo = QuickConvo()
-
 class LoadCSVData(IrisCommand):
     title = "load csv data from {file}"
     examples = ["load csv {file}"]
