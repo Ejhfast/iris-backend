@@ -124,8 +124,9 @@ class File(EnvVar):
     def convert_type(self, text, doing_match=False):
         if self.is_type(text):
             content = self.get_content(text)
-            if not doing_match: self.assign(content, name=text)
-            return True, content
+            obj = iris_objects.IrisFile(text, content)
+            self.assign(obj, name=text)
+            return True, obj#)#.when_done(self.get_when_done_state())
         return False, self.error_message(text)
 
 class VarName(sm.AssignableMachine):
@@ -133,12 +134,11 @@ class VarName(sm.AssignableMachine):
     def __init__(self, question="Please give me a variable name"):
         super().__init__()
         self.output = [question]
-    def convert_type(self, text):
-        return True, text
+    def convert_type(self, text, doing_match=False):
+        return True, iris_objects.IrisId(text, VarName.global_id)
     def next_state_base(self, text):
         success, result = self.convert_type(text)
-        result = iris_objects.IrisId(result, VarName.global_id)
-        self.assign(result)
+        self.assign(result, text)
         VarName.global_id += 1
         return False, result
 
@@ -224,7 +224,8 @@ class Select(sm.AssignableMachine):
                 if isinstance(new_state, sm.StateMachine):
                     return True, new_state
                 else:
-                    self.assign(new_state)
+                    # assuming primitive == name, may not always be good
+                    self.assign(new_state, new_state)
                     return False, new_state
         return True, self.set_error(self.error_message(text))
 
@@ -234,3 +235,25 @@ class Select(sm.AssignableMachine):
                 state.when_done(next_state)
         self.when_done_state = next_state
         return self
+
+class AddToIrisEnv(sm.StateMachine):
+    def __init__(self, env_name, env_value, iris=IRIS):
+        self.env_name = env_name
+        self.env_value = env_value
+        self.iris = iris
+        super().__init__()
+        self.output = ["I saved the result as {}.".format(env_name)]
+        self.accepts_input = False
+    def next_state_base(self, text):
+        self.iris.add_to_env(self.read_variable(self.env_name), self.read_variable(self.env_value))
+        return False, sm.Value(None, self.context)
+
+class Memory(sm.AssignableMachine):
+    def __init__(self, iris = IRIS):
+        self.iris = IRIS
+        super().__init__()
+        self.accepts_input = False
+    def next_state_base(self, text):
+        print(self.iris.env)
+        self.assign(self.iris.env["__MEMORY__"])
+        return False, self.iris.env["__MEMORY__"]

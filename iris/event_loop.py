@@ -56,7 +56,9 @@ class IrisMachine(sm.AssignableMachine):
                     yes=sm.Assign(user_class, select_alternative).when_done(resolve_args),
                     no=sm.Jump("START"))
         # confirm whether we want to continue
-        confirm = st.YesNo("Would you like to {}?".format(command_title),
+        confirm = st.YesNo([
+                        "Do you want to {}?".format(command_title),
+                        "(My certainty is {})".format(round(pred, 5))],
                     yes=resolve_args,
                     no=options).add_middleware([explain_cmd, sm.QuitMiddleware()])
         # bind user_class to class_id, then run
@@ -76,6 +78,23 @@ class IrisMiddleware(sm.Middleware):
         keep_going, state = state_tuple
         state.clear_error()
         return True, IrisMachine(output = self.output, recursed=True).when_done(caller.get_when_done_state())
+
+class AskForArg(sm.StateMachine):
+    def __init__(self, arg, uniq=""):
+        super().__init__()
+        self.accepts_input = False
+        self.arg = arg
+        self.uniq = uniq
+        self.cmd_object = cmd_object
+        self.done_state_list = done_state_list
+    def next_state_base(self, text):
+        iris_middle = IrisMiddleware(["Sure, we can run another function to generate {}.".format(arg),
+                                      "What would you like to run?"])
+        type_machine =  cmd_object.argument_types[arg].set_arg_name(arg).add_middleware(iris_middle).reset()
+        arg_var = sm.Variable(arg, scope=self.uniq)
+        verify_arg = sm.PrintVar(arg_var, util.print_assignment)
+        assign_var = sm.Assign(arg_var, type_machine.add_middleware(sm.QuitMiddleware()))
+        return True, sm.DoAll(done_state_list + [assign_var, verify_arg])
 
 class ResolveArgs(sm.StateMachine):
     def __init__(self, class_id_var, iris = IRIS, uniq = "", recursed = False):
@@ -140,10 +159,9 @@ class Execute(sm.AssignableMachine):
             self.output = ["Sorry, something went wrong with the underlying command.", str(sys.exc_info()[1])]
 
     def next_state_base(self, text):
-        try:
-            self.assign(self.raw_output, name="COMMAND VALUE")
-        except:
-            print("failed to assign")
+        self.assign(self.raw_output, name="COMMAND VALUE")
+        if isinstance(self.raw_output, sm.StateMachine):
+            return True, self.raw_output
         return False, sm.Value(None, self.context)
 
 class EventLoop:

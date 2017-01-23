@@ -44,6 +44,12 @@ class IrisData(IrisValue):
         self.X = xvals
         self.y = yvals
 
+class IrisFile(IrisValue):
+    type="File"
+    def __init__(self, name, content):
+        self.name = name
+        self.content = content
+
 class IrisDataframe(IrisValue):
     type="DataFrame"
     def __init__(self, name, column_names, column_types, data):

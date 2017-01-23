@@ -74,6 +74,7 @@ def detect_type(x):
 def env_vars(iris):
     out = []
     for k,v in iris.env.items():
+        if k == "__MEMORY__": continue
         key = k.name if isinstance(k, iris_objects.IrisValue) else k
         out.append({"name": key, "value": detect_type(v), "order": iris.env_order[k]})
     return out

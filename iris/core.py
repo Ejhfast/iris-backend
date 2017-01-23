@@ -19,6 +19,10 @@ class IrisBase:
         self.env_order = {}
         self.history = {"history": [], "currentConvo": { 'messages': [], 'title': None, 'hidden': False, 'id': 0, 'args': {} }}
 
+    def add_to_env(self, name, result):
+        self.env[name] = result
+        self.env_order[name] = len(self.env_order)
+
     def set_history(self, request):
         self.history = request["conversation"]
 
@@ -197,14 +201,18 @@ class IrisCommand:
             results = self()
         if self.store_result:
             if isinstance(results, tuple):
-                if len(names) != len(results):
+                if len(names) == len(results):
+                    for name, result in zip(names, util.single_or_list(results)):
+                        self.iris.add_to_env(name.name, result)
+                elif len(names) == 1:
+                    self.iris.add_to_env(names[0].name, results)
+                else:
                     raise Exception("Expected {} return values, got {}".format(len(names), len(results)))
             else:
                 if len(names) > 1:
                     raise Exception("Expected {} return values, got only 1".format(len(names)))
-            for name, result in zip(names, util.single_or_list(results)):
-                self.iris.env[name.name] = result
-                self.iris.env_order[name.name] = len(self.iris.env_order)
+                self.iris.add_to_env(names[0].name, results)
+        self.iris.add_to_env("__MEMORY__", results)
         return results
 
     def state_machine_output(self, arg_map, arg_names, result, query):

@@ -11,7 +11,6 @@ import fileinput
 import numpy as np
 import math
 from iris import IrisMachine
-from fileupload import file_state
 
 class SaveEnv(IrisCommand):
     title = "save environment to {name}"
@@ -54,11 +53,13 @@ class GetArrayLength(IrisCommand):
 getArrayLength = GetArrayLength()
 
 class StoreCommand(IrisCommand):
-    title = "save value of an iris command"
-    examples = [ "assign iris command value" ]
+    title = "save value of last command"
+    examples = [ "save last as {name0}" ]
     store_result = t.VarName(question="Where would you like to save this result?")
-    def command(self, cmd_val : IrisMachine(output=["What command would you like to save?"])):
+    def command(self, cmd_val : t.Memory()):
         return cmd_val
+    def explanation(self, result):
+        return []
 
 storeCommand = StoreCommand()
 
@@ -136,14 +137,16 @@ quickConvo = QuickConvo()
 class LoadCSVData(IrisCommand):
     title = "load csv data from {file}"
     examples = ["load csv {file}"]
-    store_result = t.VarName("What would you like to call the dataframe?")
     argument_types = {
-        "load_file": file_state
+        "file": t.File("What file would you like to load?"),
     }
-    def command(self, load_file):
-        return load_file
+    def command(self, file):
+        from fileupload import file_state
+        # file_state is a custom state machine, built using Iris low-level library
+        # allows for injection of user input into code logic
+        return file_state(file)
     def explanation(self, result):
-        return []
+        return "Okay, let's walk through the import now."
 
 loadCSVData = LoadCSVData()
 

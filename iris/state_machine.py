@@ -1,4 +1,5 @@
 # this contains all the primitives for constructing state machines
+import copy
 from . import iris_objects
 def print_state(state):
     return "{}".format(state)
@@ -46,6 +47,7 @@ class StateMachine:
         self.when_done_state = None
         self.output = []
         self.middleware = []
+        self.previous_state = None
     # this allows us to pass context, and gives an execution hook after context is set
     def __call__(self, context):
         self.context = dict(context)
@@ -75,6 +77,15 @@ class StateMachine:
     # getter for when_done state
     def get_when_done_state(self):
         return self.when_done_state
+    # read a variable from context
+    def read_variable(self, varname):
+        print(varname, self.context)
+        if varname in self.context["ASSIGNMENTS"]:
+            return self.context["ASSIGNMENTS"][varname]
+        return None
+    # write a variable to context
+    def write_variable(self, varname, value):
+        self.context["ASSIGNMENTS"][varname] = value
     # getter for context:
     def get_context(self):
         return self.context
@@ -138,13 +149,10 @@ class ExplainMiddleware(Middleware):
         keep_going, state = state_tuple
         state.clear_error()
         return True, self.gen_state(caller)
-        return keep_going, state
 
 class AssignableMachine(StateMachine):
     arg_name = None
     def assign(self, value, name=None):
-        # if not name:
-        #     name = self.string_representation(value)
         if len(self.context["assign"]) > 0:
             curr_assign = self.context["assign"].pop()
             print("ASSIGN", curr_assign, value, name)
@@ -193,6 +201,7 @@ class Jump(StateMachine):
     def __init__(self, state_label):
         self.state_label = state_label
         super().__init__()
+        self.accepts_input = False
     def next_state_base(self, text):
         return True, self.context[self.state_label]
     def when_done(self, new_state):
@@ -271,24 +280,6 @@ class SequentialMachine:
         self.states.append(state)
     def compile(self):
         return DoAll(self.states)
-
-class RestartMiddleware(StateMachine):
-    def __init__(self, test, next_state_obj, label):
-        self.test = test
-        self.next_state_obj = next_state_obj
-        super().__init__()
-        self.output = next_state_obj(self.context).get_output()
-
-    def next_state_base(self, text):
-        if self.test(text):
-            return self.next_state_obj.next_state_base(text)
-        return self.label(self.context).next_state_base(text)
-
-class Continue(StateMachine):
-    def next_state_base(self, text):
-        return False, None
-
-Continue = None
 
 class ValueState(AssignableMachine):
     def __init__(self, value):
