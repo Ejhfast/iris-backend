@@ -21,8 +21,9 @@ class SaveEnv(IrisCommand):
         "This data can be loaded later using the 'load environment' command."
     ]
     def command(self, name : t.String(question="What filename to save under?")):
-        import pickle
+        import dill as pickle
         with open(name, 'wb') as f:
+            print(self.iris.env)
             pickle.dump(self.iris.serialize_state(), f)
             return "Saved to {}.".format(name)
 
@@ -36,13 +37,37 @@ class LoadEnv(IrisCommand):
         "This command loads an enviornment previously saved by Iris."
     ]
     def command(self, name : t.String(question="What filename to load?")):
-        import pickle
+        import dill as pickle
         with open(name, 'rb') as f:
             data = pickle.load(f)
             self.iris.load_state(data)
             return "Loaded environment from \"{}\".".format(name)
 
 loadEnv = LoadEnv()
+
+class ListDataframeNames(IrisCommand):
+    title = "list names dataframe {dataframe}"
+    examples = ["list {dataframe}"]
+    help_text = [
+        "This command lists the column names for a Dataframe object."
+    ]
+    def command(self, dataframe : t.EnvVar("What dataframe?")):
+        return dataframe.column_names
+    def explanation(self, results):
+        return [
+            "The column names are:",
+            ", ".join(results)
+        ]
+
+listDataframeNames = ListDataframeNames()
+
+class SelectorTest(IrisCommand):
+    title = "selector test"
+    examples = []
+    def command(self, selector : t.DataframeSelector("Give me dataframe")):
+        return selector
+
+selectorTest = SelectorTest()
 
 class GetArrayLength(IrisCommand):
     title = "get length of array {arr}"
@@ -80,14 +105,6 @@ class GenerateArray(IrisCommand):
         return numpy.random.randint(100, size=n)
 
 generateArray = GenerateArray()
-
-class GenerateString(IrisCommand):
-    title = "generate a string"
-    examples = [ "generate string" ]
-    def command(self):
-        return "sdfdfd"
-
-generateString = GenerateString()
 
 class AddTwoNumbers(IrisCommand):
     title = "add two numbers: {x} and {y}"
@@ -151,8 +168,8 @@ class MakeModel(IrisCommand):
     title = "create a new classification model"
     examples = [ "build a new classification model",
                  "make a new classification model" ]
-    argument_types = { "x_features": t.ArgList(question="Please give me a comma-separated list of features"),
-                       "y_classes": t.ArgList(question="What would you like to predict?") }
+    argument_types = { "x_features": t.DataframeSelector("What dataframe do you want to use to select the features?"), #t.ArgList(question="Please give me a comma-separated list of features"),
+                       "y_classes": t.DataframeSelector("What dataframe holds the values to be predicted?"), }#t.ArgList(question="What would you like to predict?") }
     help_text = [
         "A classification model is designed to predict a categorical variable, like eye color or gender.",
         "This command takes a list of input features, as arrays, that will be used to predict the category in question.",
@@ -161,17 +178,15 @@ class MakeModel(IrisCommand):
     store_result = t.VarName(question="What should I call the model?")
     def command(self, x_features, y_classes):
         model = LogisticRegression()
-        X = np.array(x_features).T
-        y = np.array(y_classes).T
-        y = y.reshape(y.shape[0])
-        model.fit(X,y)
+        y_classes = y_classes.reshape(y_classes.shape[0])
+        model.fit(x_features, y_classes)
         if "names" in self.context:
             name = self.context["names"][0].name
         else:
             name = None
         # we use IrisModel here because it retains a link to X, y data
         # this can be useful for cross-validation, etc.
-        return iris_objects.IrisModel(model, X, y, name=name)
+        return iris_objects.IrisModel(model, x_features, y_classes, name=name)
     def explanation(self, results):
         return [] # do nothing
 

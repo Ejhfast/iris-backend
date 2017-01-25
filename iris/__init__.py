@@ -3,3 +3,4 @@ from .event_loop import EventLoop, IrisMachine
 from . import iris_objects
 from . import state_types
 from . import util
+from .test import run_tests

@@ -2,7 +2,6 @@ from iris import iris_objects
 from iris import state_types as t
 from iris import state_machine as sm
 from iris import util
-import json
 
 def check_file_header(file_str):
     first_line = file_str.split("\n")[0]
@@ -34,7 +33,7 @@ class Done(sm.StateMachine):
     def next_state_base(self, next):
         filename = self.read_variable("loaded_file").name
         dataframe = iris_objects.IrisDataframe(filename, self.context["headers"], self.context["types"], self.context["data"])
-        return True, sm.ValueState(dataframe).when_done(self.get_when_done_state())
+        return sm.ValueState(dataframe).when_done(self.get_when_done_state())
 
 class SetIndex(sm.StateMachine):
     def __init__(self, index):
@@ -43,7 +42,7 @@ class SetIndex(sm.StateMachine):
         self.accepts_input = False
     def next_state_base(self, text):
         self.context["types"][self.index] = self.read_variable("category_select")
-        return True, sm.DoAll([
+        return sm.DoAll([
             sm.Print([
                 "Great, I've set {} to {}.".format(self.context["headers"][self.index], self.read_variable("category_select")),
             ]),
@@ -69,8 +68,8 @@ class ChangeIndex(sm.StateMachine):
                 "Categorical (e.g., 'large' or 'small')": "Categorical"
             }))
             set_index = SetIndex(index)
-            return True, sm.DoAll([print_text, select_types, set_index, sm.Print(["LOL"])]).when_done(self.get_when_done_state())
-        return False, None #True, Done().when_done(self.get_when_done_state())
+            return sm.DoAll([print_text, select_types, set_index, sm.Print(["LOL"])]).when_done(self.get_when_done_state())
+        return None #True, Done().when_done(self.get_when_done_state())
 
 class ExamineTypes(sm.StateMachine):
     def __init__(self):
@@ -78,8 +77,8 @@ class ExamineTypes(sm.StateMachine):
         self.output = ["Would you like to change anything?"]
     def next_state_base(self, text):
         if util.verify_response(text):
-            return True, ChangeIndex().when_done(self.get_when_done_state())
-        return False, None #True, Done().when_done(self.get_when_done_state())
+            return ChangeIndex().when_done(self.get_when_done_state())
+        return None #True, Done().when_done(self.get_when_done_state())
 
 class CheckTypes(sm.StateMachine):
     def __init__(self, force_check=False):
@@ -102,9 +101,9 @@ class CheckTypes(sm.StateMachine):
                     "example": self.context["data"][0].split(",")[i]
                 } for i,_ in enumerate(self.context["headers"])
             }
-            print_types = sm.Print([{"type":"data", "value":json.dumps(type_obj, indent=4, default=str)}])
-            return True, sm.DoAll([print_types, ChangeIndex()]).when_done(self.get_when_done_state())
-        return False, None #True, Done().when_done(self.get_when_done_state())
+            print_types = sm.Print([{"type":"data", "value":util.prettify_data(type_obj)}])
+            return sm.DoAll([print_types, ChangeIndex()]).when_done(self.get_when_done_state())
+        return None #True, Done().when_done(self.get_when_done_state())
 
 class AskForHeaders(sm.StateMachine):
     def __init__(self):
@@ -115,7 +114,7 @@ class AskForHeaders(sm.StateMachine):
         sample_data = self.read_variable("loaded_file").content.split("\n")[start_from].split(",")
         return [
             "What are the headers? Please enter a list of comma-separated values. I've provided a line of sample data below.",
-            {"type":"data", "value":json.dumps(sample_data, indent=4, default=str)}
+            {"type":"data", "value":util.prettify_data(sample_data)}
         ]
     def next_state_base(self, text):
         possible_headers = [x.strip() for x in text.split(",")]
@@ -128,7 +127,7 @@ class AskForHeaders(sm.StateMachine):
             problem = sm.Print([
                 "I ran into a problem. You need to enter {} values.".format(len(self.context["headers"]))
             ]).when_done(self)
-        return True, problem
+        return problem
 
 class GenerateHeaders(sm.StateMachine):
     def __init__(self):
@@ -143,25 +142,25 @@ class GenerateHeaders(sm.StateMachine):
         self.context['headers'] = headers
         start_from = 1 if self.read_variable("throw_away") else 0
         self.context['data'] = file_str.split("\n")[start_from:]
-        format_header = json.dumps(headers, indent=4)
-        return True, sm.Print([{"type":"data", "value":format_header}]).when_done(self.get_when_done_state())
+        format_header = util.prettify_data(headers)
+        return sm.Print([{"type":"data", "value":format_header}]).when_done(self.get_when_done_state())
 
 class FirstLineHeader(sm.StateMachine):
     def get_output(self):
         file_str = self.read_variable("loaded_file").content
-        start_read = self.read_variable("throw_away")
+        start_read = 1 if self.read_variable("throw_away") else 0
         headers = file_str.split("\n")[start_read].split(",")
-        format_header = json.dumps(headers, indent=4)
+        format_header = util.prettify_data(headers)
         return [
             "Here are the headers I inferred from the first line. Do these look good?",
             {"type":"data", "value":format_header}
         ]
     def next_state_base(self, text):
-        start_read = self.read_variable("throw_away")
         if util.verify_response(text):
-            self.context['data'] = self.read_variable("loaded_file").content.split("\n")[start_read:]
-            return True, sm.Print(["Great, thanks."]).when_done(self.get_when_done_state())
-        return True, CheckHeader(force_ask=True).when_done(self.get_when_done_state())
+            self.write_variable("throw_away", True)
+            self.context['data'] = self.read_variable("loaded_file").content.split("\n")[1:]
+            return sm.Print(["Great, thanks."]).when_done(self.get_when_done_state())
+        return CheckHeader(force_ask=True).when_done(self.get_when_done_state())
 
 class CheckHeader(sm.StateMachine):
     def __init__(self, force_ask=False):
@@ -173,7 +172,7 @@ class CheckHeader(sm.StateMachine):
         file_str = self.read_variable("loaded_file").content
         success, headers = check_file_header(file_str)
         self.context['headers'] = headers
-        format_header = json.dumps(headers, indent=4)
+        format_header = util.prettify_data(headers)
         if not success or self.force_ask:
             state_machine = []
             if self.force_ask:
@@ -189,8 +188,8 @@ class CheckHeader(sm.StateMachine):
                 "Enter the headers manually": AskForHeaders(),
                 "Use first line as header:": FirstLineHeader()
             }))
-            return True, sm.DoAll(state_machine).when_done(self.get_when_done_state())
-        return True, FirstLineHeader().when_done(self.get_when_done_state())
+            return sm.DoAll(state_machine).when_done(self.get_when_done_state())
+        return FirstLineHeader().when_done(self.get_when_done_state())
 
 def file_state(file):
     return sm.DoAll([

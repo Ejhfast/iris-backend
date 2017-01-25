@@ -58,6 +58,10 @@ class IrisDataframe(IrisValue):
         self.column_types = column_types
         self.data = self.convert_data(data)
 
+    def get_column(self, name):
+        indexes = {name:i for i, name in enumerate(self.column_names)}
+        return np.array([row[indexes[name]] for row in self.data])
+
     def convert_data(self, data):
         new_data = []
         cat2index = {}

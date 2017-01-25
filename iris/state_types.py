@@ -49,10 +49,27 @@ class EnvVar(sm.AssignableMachine):
                 return True, result
             return False, self.error_message(text)
 
+    def hint(self, text):
+        success, _ = self.convert_type(text, doing_match=True)
+        if success:
+            return ["'{}' works as an arg".format(text)]
+        else:
+            return []
+
     def next_state_base(self, text):
         success, result = self.convert_type(text)
         if success: return result
         return self.set_error(result)
+
+class Dataframe(EnvVar):
+    def is_type(self, x):
+        if isinstance(x, iris_objects.IrisDataframe):
+            return True
+        return False
+    def error_message(self, text):
+        return ["I could not find dataframe {} in the environment.".format(text)]
+    def type_from_string(self, text):
+        return False, None
 
 class Int(EnvVar):
     def is_type(self, x):
@@ -142,6 +159,40 @@ class VarName(sm.AssignableMachine):
         VarName.global_id += 1
         return result
 
+class DataframeSelector(sm.AssignableMachine):
+    def __init__(self, question):
+        super().__init__()
+        self.question = question
+        self.dataframe = None
+        self.accepts_input = False
+    def reset(self):
+        self.accepts_input = False
+        return self
+    def get_output(self):
+        dataframe = self.read_variable("dataframe")
+        if dataframe:
+            return [
+                "Here are the current columns in the dataframe",
+                {"type": "data", "value": util.prettify_data(dataframe.column_names)},
+                "Please give me a comma-separated list of the columns you want to use for {}:".format(self.arg_name)
+            ]
+        return []
+    def convert_type(self, x):
+        return False, None
+    def next_state_base(self, text):
+        if not self.read_variable("dataframe"):
+            self.accepts_input = True
+            return sm.Assign("dataframe", Dataframe(self.question)).when_done(self)
+        else:
+            dataframe = self.read_variable("dataframe")
+            possible_columns = [x.strip() for x in text.split(",")]
+            if all([col in dataframe.column_names for col in possible_columns]):
+                selection = np.array([dataframe.get_column(name) for name in possible_columns]).T
+                self.assign(selection)
+                dataframe = self.delete_variable("dataframe")
+                return selection
+            return sm.Print(["A least one of those wasn't a valid column name. Try again?"]).when_done(self)
+
 class YesNo(sm.AssignableMachine):
     def __init__(self, question, yes=None, no=None):
         self.yes = yes
@@ -162,6 +213,11 @@ class YesNo(sm.AssignableMachine):
             primitive_or_question(self.yes, text),
             primitive_or_question(self.no, text)
         ])
+
+    def hint(self, text):
+        if util.verify_response(text):
+            return ["triggers yes"]
+        return ["triggers no"]
 
     def next_state_base(self, text):
         new_state = self
@@ -213,6 +269,15 @@ class Select(sm.AssignableMachine):
     def convert_type(self, text, doing_match=False):
         return OR([primitive_or_question(value, text, doing_match) for _, value in self.id2option.items()])
 
+    def hint(self, text):
+        success, choice = util.extract_number(text)
+        if success:
+            value = self.id2option[choice]
+            if isinstance(value, str):
+                return ["{}".format(value)]
+            return ["choice {}".format(choice)]
+        return []
+
     def next_state_base(self, text):
         new_state = self
         success, choice = util.extract_number(text)
@@ -237,8 +302,9 @@ class AddToIrisEnv(sm.StateMachine):
         self.env_value = env_value
         self.iris = iris
         super().__init__()
-        self.output = ["I saved the result as {}.".format(env_name)]
         self.accepts_input = False
+    def get_output(self):
+        return ["I saved the result as {}.".format(self.read_variable(self.env_name))]
     def next_state_base(self, text):
         self.iris.add_to_env(self.read_variable(self.env_name), self.read_variable(self.env_value))
         return sm.Value(None, self.context)

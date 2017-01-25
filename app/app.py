@@ -65,6 +65,17 @@ async def new_loop(request):
 
 add_cors(app.router.add_route('POST', '/new_loop', new_loop))
 
+async def hint(request):
+    question = await request.json()
+    text = question["text"]
+    if text == "":
+        response = []
+    else:
+        response = state_machine.hint(text)
+    return web.json_response({"predictions": response})
+
+add_cors(app.router.add_route('POST', '/hint', hint))
+
 async def variables(request):
     response = {"type": "UPDATE_VARIABLES", "variables": util.env_vars(iris)}
     return web.json_response(response)
@@ -73,7 +84,6 @@ add_cors(app.router.add_route('GET', '/variables', variables))
 
 async def history(request):
     response = {"type": "UPDATE_HISTORY", "conversation": iris.history}
-    # print("history response", response)
     return web.json_response(response)
 
 add_cors(app.router.add_route('GET', '/history', history))

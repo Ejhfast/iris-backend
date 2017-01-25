@@ -35,6 +35,11 @@ class IrisMachine(sm.AssignableMachine):
         explained_options = st.Select(options=option_dict, option_info=option_info).add_middleware(sm.QuitMiddleware())
         return normal_options.add_middleware(sm.ExplainMiddleware(lambda caller: explained_options))
 
+    def hint(self, text):
+        predictions = self.iris.get_predictions(text, n=3)
+        cmd_objects = [self.iris.class_functions[x[0]] for x in predictions]
+        return [obj.title for obj in cmd_objects]
+
     def next_state_base(self, text):
         # add a label, we might jump back here
         self.context["START"] = self
@@ -47,7 +52,9 @@ class IrisMachine(sm.AssignableMachine):
         # create a variable to hold the predicted command class
         user_class = sm.Variable("user_class", scope=self.uniq)
         # this machine will resolve the args on that command
-        resolve_args = ResolveArgs(user_class, uniq=self.uniq, recursed=self.recursed).when_done(self.get_when_done_state())
+        resolve_args = ResolveArgs(user_class,
+                            uniq=self.uniq,
+                            recursed=self.recursed).when_done(self.get_when_done_state())
         # four alternative commands to present to user, if we don't want the one selected
         select_alternative = self.compose_options(text, 4)
         # ask whether we want these options
@@ -62,7 +69,11 @@ class IrisMachine(sm.AssignableMachine):
                     yes=resolve_args,
                     no=options).add_middleware([explain_cmd, sm.QuitMiddleware()])
         # bind user_class to class_id, then run
-        return sm.Let(user_class, equal=class_id, then_do=confirm)
+        # used to be "confirm"
+        return sm.Let(user_class, equal=class_id, then_do=sm.DoAll([
+            sm.Print(["Sure, I can {}".format(command_title)]),
+            resolve_args
+        ]).add_middleware([explain_cmd, sm.QuitMiddleware()]))
 
     def when_done(self, new_state):
         self.when_done_state = new_state
@@ -158,9 +169,16 @@ class EventLoop:
         arg_map = {arg: strip_key(top_level_scope, self.machine.current_state.context["ASSIGNMENT_NAMES"])[arg] for arg in cmd_object.all_args}
         self.machine.reset()
         return {"state":"START", "text": outputs, "label":label, "arg_map": arg_map, "history": self.iris.history["history"] }
+    def hint(self, text):
+        future_text = self.machine.current_state.hint(text)
+        return future_text
     def state_machine(self, data):
         outputs = []
         text = util.get_last_message(data["messages"])
+        if "go back" in text:
+            self.machine.go_back()
+            outputs = self.machine.current_output()
+            return {"state": "RECURSE", "text": outputs}
         self.machine.next_state(text)
         for o in self.machine.current_output():
             outputs.append(o)

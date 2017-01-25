@@ -8,6 +8,8 @@ class StateMachineRunner:
     def __init__(self, state_machine):
         self.original_state = state_machine
         self.current_state = state_machine
+        self.previous_state = []
+        self.previous_context = []
     # get current state machine output
     def current_output(self):
         print(self.current_state)
@@ -30,9 +32,23 @@ class StateMachineRunner:
         self.current_state = self.original_state
         self.original_state.reset()
         return self
+    def go_back(self):
+        while len(self.previous_state) > 0 and self.previous_state[-1].reset().accepts_input == False:
+            self.previous_state.pop()
+            self.previous_context.pop()
+        if len(self.previous_state) > 0:
+            previous_state, previous_context = self.previous_state.pop(), self.previous_context.pop()
+            self.current_state = previous_state(previous_context)
+            print("GO BACK", previous_state, previous_context)
+        else:
+            self.current_state = self.original_state
+            self.original_state.reset()
     # proceed to next state for machine
     def next_state(self, text):
+        self.previous_state.append(self.current_state)
+        self.previous_context.append(copy.deepcopy(self.current_state.context))
         new_state = self.current_state.next_state(text)
+        print("TRANSITIONING", self.current_state, new_state)
         if isinstance(new_state, StateMachine):
             self.current_state = new_state(self.current_state.context)
             return True
@@ -61,6 +77,9 @@ class StateMachine:
         else:
             self.middleware.append(middleware)
         return self
+    # peek into future
+    def hint(self, text):
+        return []
     # does this machine support assignment
     def is_assignable(self):
         return False
@@ -87,6 +106,9 @@ class StateMachine:
     # write a variable to context
     def write_variable(self, varname, value):
         self.context["ASSIGNMENTS"][varname] = value
+    def delete_variable(self, varname):
+        if varname in self.context["ASSIGNMENTS"]:
+            del self.context["ASSIGNMENTS"][varname]
     # getter for context:
     def get_context(self):
         return self.context
@@ -175,6 +197,8 @@ class DoAll(AssignableMachine):
         self.accepts_input = False
     def next_state_base(self, text):
         return self.states[0]
+    def hint(self, text):
+        return self.states[0].hint(text)
     def when_done(self, state):
         self.states[-1].when_done(state)
         return self
@@ -237,6 +261,8 @@ class Assign(StateMachine):
         else:
             self.context["assign"].append(self.variable)
         return self.assign_state
+    def hint(self, text):
+        self.assign_state.hint(text)
     def when_done(self, state):
         self.assign_state.when_done(state)
         return self
@@ -251,6 +277,8 @@ class Let(StateMachine):
     def next_state_base(self, text):
         self.context["ASSIGNMENTS"][self.variable.scope_name()]=self.equal
         return self.next_state_obj
+    def hint(self, text):
+        return self.next_state_obj.hint(text)
 
 class Variable(StateMachine):
     def __init__(self, name, scope=None):
