@@ -1,65 +1,11 @@
 from . import util
-from .core import IRIS
-from . import state_machine as sm
+from ...model import IRIS
+from ... import state_machine as sm
 from . import iris_objects
-import numpy as np
-
-def OR(tuple_list):
-    for tuple in tuple_list:
-        if tuple[0] == True:
-            return tuple
-    return False, None
-
-def primitive_or_question(object, text, doing_match):
-    if isinstance(object, sm.StateMachine):
-        return object.convert_type(text, doing_match)
-    return object == text, text
-
-class EnvVar(sm.AssignableMachine):
-    def __init__(self, question="Please give me a value for {}:", iris=IRIS):
-        self.iris = iris
-        self.question = question
-        super().__init__()
-
-    def string_representation(self, value):
-        if isinstance(value, iris_objects.IrisValue):
-            return value.name
-        return str(value)
-
-    def get_output(self):
-        return [self.question.format(self.arg_name)]
-
-    def error_message(self, text):
-        return ["I could not find '{}' in the environment".format(text)]
-
-    def is_type(self, x):
-        return True
-
-    def type_from_string(self, x):
-        return False, None
-
-    def convert_type(self, text, doing_match=False):
-        if text in self.iris.env and self.is_type(self.iris.env[text]):
-            if not doing_match: self.assign(self.iris.env[text], name=text)
-            return True, self.iris.env[text]
-        else:
-            success, result = self.type_from_string(text)
-            if success:
-                if not doing_match: self.assign(result, name=text)
-                return True, result
-            return False, self.error_message(text)
-
-    def hint(self, text):
-        success, _ = self.convert_type(text, doing_match=True)
-        if success:
-            return ["'{}' works as an arg".format(text)]
-        else:
-            return []
-
-    def next_state_base(self, text):
-        success, result = self.convert_type(text)
-        if success: return result
-        return self.set_error(result)
+from .basic import EnvVar
+# for statistical machine
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import CountVectorizer
 
 class Dataframe(EnvVar):
     def is_type(self, x):
@@ -71,102 +17,20 @@ class Dataframe(EnvVar):
     def type_from_string(self, text):
         return False, None
 
-class Int(EnvVar):
-    def is_type(self, x):
-        if isinstance(x, int): return True
-        return False
-
-    def error_message(self, text):
-        return ["I could not find '{}' in the environment or convert it to an integer. Please try again:".format(text)]
-
-    def type_from_string(self, x):
-        try:
-            result = int(x)
-            return True, result
-        except:
-            return False, None
-
-class String(EnvVar):
-    def is_type(self, x):
-        if isinstance(x, str): return True
-        return False
-
-    def error_message(self, text):
-        return ["I could not find '{}' in the environment or convert it to an string. Please try again:".format(text)]
-
-    def type_from_string(self, x):
-        return True, x
-
-class Array(EnvVar):
-    def is_type(self, x):
-        if isinstance(x, np.ndarray): return True
-        return False
-
-    def error_message(self, text):
-        return ["I could not find '{}' in the environment or convert it to an Array. Please try again:".format(text)]
-
-class ArgList(EnvVar):
-    def is_type(self, x):
-        return True, x
-
-    def string_representation(self, value):
-        return 'LIST OF {}'.format(self.arg_name)
-
-    def error_message(self, text):
-        return ["I couldn't parse that. Please try again:".format(text)]
-
-    def convert_type(self, text):
-        elements = [x.strip() for x in text.split(",")]
-        if all([e in self.iris.env and self.is_type(self.iris.env[e]) for e in elements]):
-            self.assign([self.iris.env[e] for e in elements])
-            return True, [self.iris.env[e] for e in elements]
-        return False, self.error_message(text)
-
-class File(EnvVar):
-    def is_type(self, x):
-        try:
-            f = open(x, "r")
-            f.close()
-        except:
-            return False
-        return True
-
-    def get_content(self, x):
-        with open(x, "r") as f:
-            return f.read()#.decode('utf-8')
-
-    def error_message(self, text):
-        return ["I couldn't find {} in the environment. Please try again.".format(text)]
-
-    def convert_type(self, text, doing_match=False):
-        if self.is_type(text):
-            content = self.get_content(text)
-            obj = iris_objects.IrisFile(text, content)
-            self.assign(obj, name=text)
-            return True, obj#)#.when_done(self.get_when_done_state())
-        return False, self.error_message(text)
-
-class VarName(sm.AssignableMachine):
-    global_id = 0
-    def __init__(self, question="Please give me a variable name"):
-        super().__init__()
-        self.output = [question]
-    def convert_type(self, text, doing_match=False):
-        return True, iris_objects.IrisId(text, VarName.global_id)
-    def next_state_base(self, text):
-        success, result = self.convert_type(text)
-        self.assign(result, text)
-        VarName.global_id += 1
-        return result
-
 class DataframeSelector(sm.AssignableMachine):
-    def __init__(self, question):
+    def __init__(self, question, dataframe = None):
         super().__init__()
         self.question = question
-        self.dataframe = None
+        self.dataframe = dataframe
         self.accepts_input = False
+        if self.dataframe:
+            self.write_variable("dataframe", dataframe)
+            self.accepts_input = True
     def reset(self):
         self.accepts_input = False
+        if self.dataframe:
+            self.write_variable("dataframe", dataframe)
+            self.accepts_input = True
         return self
     def get_output(self):
         dataframe = self.read_variable("dataframe")
@@ -179,6 +43,9 @@ class DataframeSelector(sm.AssignableMachine):
         return []
     def convert_type(self, x):
         return False, None
+    def selector_transform(self, columns):
+        dataframe = self.read_variable("dataframe")
+        return np.array([dataframe.get_column(name) for name in columns]).T
     def next_state_base(self, text):
         if not self.read_variable("dataframe"):
             self.accepts_input = True
@@ -187,11 +54,16 @@ class DataframeSelector(sm.AssignableMachine):
             dataframe = self.read_variable("dataframe")
             possible_columns = [x.strip() for x in text.split(",")]
             if all([col in dataframe.column_names for col in possible_columns]):
-                selection = np.array([dataframe.get_column(name) for name in possible_columns]).T
+                selection = self.selector_transform(possible_columns)
                 self.assign(selection)
                 dataframe = self.delete_variable("dataframe")
                 return selection
             return sm.Print(["A least one of those wasn't a valid column name. Try again?"]).when_done(self)
+
+class DataframeNameSelector(DataframeSelector):
+    def selector_transform(self, columns):
+        dataframe = self.read_variable("dataframe")
+        return (dataframe, columns)
 
 class YesNo(sm.AssignableMachine):
     def __init__(self, question, yes=None, no=None):
@@ -214,7 +86,7 @@ class YesNo(sm.AssignableMachine):
             primitive_or_question(self.no, text)
         ])
 
-    def hint(self, text):
+    def base_hint(self, text):
         if util.verify_response(text):
             return ["triggers yes"]
         return ["triggers no"]
@@ -269,7 +141,7 @@ class Select(sm.AssignableMachine):
     def convert_type(self, text, doing_match=False):
         return OR([primitive_or_question(value, text, doing_match) for _, value in self.id2option.items()])
 
-    def hint(self, text):
+    def base_hint(self, text):
         success, choice = util.extract_number(text)
         if success:
             value = self.id2option[choice]
@@ -296,18 +168,46 @@ class Select(sm.AssignableMachine):
         self.when_done_state = next_state
         return self
 
-class AddToIrisEnv(sm.StateMachine):
-    def __init__(self, env_name, env_value, iris=IRIS):
-        self.env_name = env_name
-        self.env_value = env_value
-        self.iris = iris
+class StatisticalState(sm.AssignableMachine):
+    def __init__(self, question, class2example):
+        self.class2example = class2example
+        self.titles = {}
         super().__init__()
-        self.accepts_input = False
-    def get_output(self):
-        return ["I saved the result as {}.".format(self.read_variable(self.env_name))]
+        if isinstance(question, list):
+            self.output = question
+        else:
+            self.output = [question]
+        self.model = LogisticRegression()
+        self.vectorizer = CountVectorizer()
+        self.train()
+
+    def train(self):
+        docs = []
+        classes = []
+        self.transitions = {}
+        for i, title in enumerate(self.class2example.keys()):
+            examples = self.class2example[title]["examples"]
+            self.transitions[i] = self.class2example[title]["state"]
+            self.titles[i] = title
+            for example in examples:
+                docs.append(example)
+                classes.append(i)
+        X = self.vectorizer.fit_transform(docs)
+        self.model.fit(X, classes)
+
+    def base_hint(self, text):
+        next_state = self.predict(text)
+        return [self.titles[next_state]]
+
+    def predict(self, text):
+        x = self.vectorizer.transform([text])
+        return self.model.predict(x)[0]
+
     def next_state_base(self, text):
-        self.iris.add_to_env(self.read_variable(self.env_name), self.read_variable(self.env_value))
-        return sm.Value(None, self.context)
+        next_state = self.predict(text)
+        if not isinstance(self.transitions[next_state], sm.StateMachine):
+            self.assign(self.transitions[next_state])
+        return self.transitions[next_state]
 
 class Memory(sm.AssignableMachine):
     def __init__(self, iris = IRIS):

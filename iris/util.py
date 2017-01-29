@@ -2,6 +2,10 @@ import shlex
 import numpy as np
 import json
 from . import iris_objects
+import re
+
+def split_with_quotes(string, delim = " "):
+    return [p for p in re.split("({}|\\\".*?\\\"|'.*?')".format(delim), string) if p.strip()]
 
 def single_or_list(x):
     if isinstance(x, list):

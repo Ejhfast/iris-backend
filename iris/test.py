@@ -1,5 +1,6 @@
 from . import state_machine as sm
-from . import state_types as t
+from .state_machine import types as t
+from . import util
 
 def test_timetravel_simple():
     two_questions = t.YesNo("Are you happy?",
@@ -34,4 +35,7 @@ def test_timetravel_simple():
     #print(runner.current_output())
 
 def run_tests():
-    test_timetravel_simple()
+    print(util.split_with_quotes("this is my \"is the best\" yeah"))
+    print(util.split_with_quotes("this is my \"is the best' yeah"))
+    print(util.split_with_quotes("this is,my,\"is the best',yeah", delim=","))
+    print(util.split_with_quotes("this is,my,\"is the, best',yeah", delim=","))

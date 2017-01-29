@@ -2,10 +2,14 @@ from iris import iris_objects
 from iris import state_types as t
 from iris import state_machine as sm
 from iris import util
+import csv
 
-def check_file_header(file_str):
+def split_line(line, delim = ","):
+    return [x for x in csv.reader([line], delimiter=delim)][0]
+
+def check_file_header(file_str, delim=","):
     first_line = file_str.split("\n")[0]
-    cols = first_line.split(",")
+    cols = [x.lower() for x in split_line(first_line)]
     types = rows_and_types(cols)
     print(set(types))
     if len(set(types)) > 1:
@@ -90,7 +94,7 @@ class CheckTypes(sm.StateMachine):
             self.accepts_input = False
     def next_state_base(self, text):
         file_str = self.context['data']
-        types = rows_and_types(file_str[0].split(","))
+        types = rows_and_types(split_line(file_str[0]))
         if not self.force_check:
             self.context["types"] = types
         if self.force_check or util.verify_response(text):
@@ -98,7 +102,7 @@ class CheckTypes(sm.StateMachine):
                 i: {
                     "name": self.context["headers"][i],
                     "type": self.context["types"][i],
-                    "example": self.context["data"][0].split(",")[i]
+                    "example": split_line(self.context["data"][0])[i]
                 } for i,_ in enumerate(self.context["headers"])
             }
             print_types = sm.Print([{"type":"data", "value":util.prettify_data(type_obj)}])
@@ -111,15 +115,15 @@ class AskForHeaders(sm.StateMachine):
     def get_output(self):
         print(self.context)
         start_from = 1 if self.read_variable("throw_away") else 0
-        sample_data = self.read_variable("loaded_file").content.split("\n")[start_from].split(",")
+        sample_data = split_line(self.read_variable("loaded_file").content.split("\n")[start_from])
         return [
             "What are the headers? Please enter a list of comma-separated values. I've provided a line of sample data below.",
             {"type":"data", "value":util.prettify_data(sample_data)}
         ]
     def next_state_base(self, text):
-        possible_headers = [x.strip() for x in text.split(",")]
+        possible_headers = [x.strip() for x in split_line(text)]
         if len(possible_headers) == len(self.context['headers']):
-            self.context['headers'] = possible_headers
+            self.context['headers'] = [x.lower() for x in possible_headers]
             start_from = 1 if self.read_variable("throw_away") else 0
             self.context["data"] = self.read_variable("loaded_file").content.split("\n")[start_from:]
             return True, sm.Print(["Great, thanks."]).when_done(self.get_when_done_state())
@@ -137,7 +141,7 @@ class GenerateHeaders(sm.StateMachine):
     def next_state_base(self, text):
         file_str = self.read_variable("loaded_file").content
         lines = file_str.split("\n")
-        num_cols = len(lines[0].split(","))
+        num_cols = len(split_line(lines[0]))
         headers = ["column{}".format(i) for i in range(0,num_cols)]
         self.context['headers'] = headers
         start_from = 1 if self.read_variable("throw_away") else 0
@@ -149,7 +153,7 @@ class FirstLineHeader(sm.StateMachine):
     def get_output(self):
         file_str = self.read_variable("loaded_file").content
         start_read = 1 if self.read_variable("throw_away") else 0
-        headers = file_str.split("\n")[start_read].split(",")
+        headers = [x.lower() for x in split_line(file_str.split("\n")[start_read])]
         format_header = util.prettify_data(headers)
         return [
             "Here are the headers I inferred from the first line. Do these look good?",

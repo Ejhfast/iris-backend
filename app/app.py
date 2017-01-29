@@ -5,7 +5,8 @@ import json
 import os
 import sys
 import aiohttp_cors
-import demo
+sys.path.insert(0, os.path.abspath('..'))
+from iris import stdlib
 from iris import EventLoop, IRIS
 import util
 from collections import defaultdict
