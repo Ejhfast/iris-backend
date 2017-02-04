@@ -1,4 +1,4 @@
-from .. import IRIS, IrisCommand
+from .. import IrisCommand
 from .. import state_types as t
 from .. import state_machine as sm
 from .. import util as util
@@ -38,11 +38,13 @@ loadEnv = LoadEnv()
 
 class StoreCommand(IrisCommand):
     title = "save value of last command"
-    examples = [ "save last as {name0}" ]
-    store_result = t.VarName(question="Where would you like to save this result?")
-    def command(self, cmd_val : t.Memory()):
+    examples = [ "save last as {name}" ]
+    argument_types = {
+        "cmd_val": t.Memory(),
+        "name": t.String("What name would you like to save it as?")
+    }
+    def command(self, cmd_val, name):
+        self.iris.add_to_env(name, cmd_val)
         return cmd_val
-    def explanation(self, result):
-        return []
 
 storeCommand = StoreCommand()

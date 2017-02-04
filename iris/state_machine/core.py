@@ -28,8 +28,11 @@ class StateMachineRunner:
     def reset(self):
         self.current_state = self.original_state
         self.original_state.reset()
+        self.previous_state = []
+        self.previous_context = []
         return self
     def go_back(self):
+        print(self.previous_state)
         while len(self.previous_state) > 0 and self.previous_state[-1].reset().accepts_input == False:
             self.previous_state.pop()
             self.previous_context.pop()
@@ -76,10 +79,8 @@ class StateMachine:
         return self
     # peek into future
     def hint(self, text):
-        print("CALLING HINT", text)
         for middleware in self.middleware:
             if middleware.test(text):
-                print("PASSED TEST", text, middleware)
                 return middleware.hint(text)
         return self.base_hint(text)
     def base_hint(self, text):
@@ -87,13 +88,19 @@ class StateMachine:
     # does this machine support assignment
     def is_assignable(self):
         return False
+    def reset_context(self):
+        self.context = { "ASSIGNMENTS": {}, "ASSIGNMENT_NAMES": {}, "assign": [] }
+        return self
     # any kind of reset
     def reset(self):
         return self
     # once one machine is "done" (no explicit next state), do we want to do
     # something else? useful for lists of things to do, or loops
     def when_done(self, new_state):
-        self.when_done_state = new_state
+        if isinstance(new_state, StateMachine):
+            self.when_done_state = new_state
+        #elif not (new_state == None):
+        #    raise Exception("Trying to set when_done with {}".format(new_state))
         return self
     # getter for accepts_input (does this state need input from user)
     def get_accepts_input(self):

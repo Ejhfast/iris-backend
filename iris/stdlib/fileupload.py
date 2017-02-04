@@ -202,5 +202,5 @@ def file_state(file):
         CheckTypes(),
         sm.Assign("dataframe", Done()),
         sm.Assign("env_name", t.String("Where would you like to save the dataframe?")),
-        t.AddToIrisEnv("env_name", "dataframe"),
+        sm.AddToIrisEnv("env_name", "dataframe"),
     ])

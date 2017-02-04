@@ -1,11 +1,13 @@
 from . import util
-from ...model import IRIS
+from ..model import IRIS_MODEL
 from ... import state_machine as sm
 from . import iris_objects
 from .basic import EnvVar
 # for statistical machine
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import CountVectorizer
+
+IRIS = IRIS_MODEL
 
 class Dataframe(EnvVar):
     def is_type(self, x):

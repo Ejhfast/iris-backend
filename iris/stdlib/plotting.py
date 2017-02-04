@@ -1,7 +1,8 @@
-from .. import IRIS, IrisCommand
+from .. import IrisCommand
 from .. import state_types as t
 from .. import state_machine as sm
 from .. import util as util
+from .. import iris_objects
 
 class ComputeAUC(IrisCommand):
     title = "compute auc curve data for {model}"
@@ -115,18 +116,22 @@ class PlotHistogram(IrisCommand):
     title = "plot a histogram on {data}"
     examples = [ "plot histogram {data}",
                  "histogram {data}" ]
-    store_result = t.VarName(question="Where would you like to save the plot?")
     help_text = [
         "This command plots a histogram on the provided data.",
         "A histogram counts the number of datapoints that hold certain values."
     ]
-    def command(self, data : t.EnvVar("What would you like to plot?")):
+    argument_types = {
+        "data": t.EnvVar("What would you like to plot?"),
+        "name": t.String("Where would you like to save the plot?")
+    }
+    def command(self, data, name):
         import matplotlib
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
-        name = self.context["names"][0]
-        f = plt.figure(name.id)
+        f = plt.figure(self.iris.gen_plot_id(name))
         plt.hist(data)
-        return iris_objects.IrisImage(f, name.name)
+        plot_data = iris_objects.IrisImage(f, name)
+        self.iris.add_to_env(name, plot_data)
+        return plot_data
 
 plotHistogram = PlotHistogram()

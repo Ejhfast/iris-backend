@@ -1,8 +1,10 @@
 from ... import util
-from ...model import IRIS
+from ..model import IRIS_MODEL
 from ... import state_machine as sm
 from ... import iris_objects
 import numpy as np
+
+IRIS = IRIS_MODEL
 
 def OR(tuple_list):
     for tuple in tuple_list:
@@ -42,8 +44,8 @@ class EnvVar(sm.AssignableMachine):
 
     def convert_type(self, text, doing_match=False):
         if text in self.iris.env and self.is_type(self.iris.env[text]):
-            if not doing_match: self.assign(self.iris.env[text], name=text)
-            return True, self.iris.env[text]
+            if not doing_match: self.assign(iris_objects.EnvReference(text), name=text)#self.iris.env[text], name=text)
+            return True, iris_objects.EnvReference(text)#self.iris.env[text]
         else:
             success, result = self.type_from_string(text)
             if success:
@@ -96,6 +98,14 @@ class Array(EnvVar):
 
     def error_message(self, text):
         return ["I could not find '{}' in the environment or convert it to an Array. Please try again:".format(text)]
+
+class Function(EnvVar):
+    def is_type(self, x):
+        if isinstance(x, iris_objects.FunctionWrapper): return True
+        return False
+
+    def error_message(self, text):
+        return ["I could not find '{}' in the environment. Please try again:".format(text)]
 
 class ArgList(EnvVar):
     def is_type(self, x):

@@ -79,3 +79,12 @@ class IrisDataframe(IrisValue):
                     new_row.append(value)
             new_data.append(new_row)
         return new_data
+
+class FunctionWrapper:
+    def __init__(self, function, name="anonymous func"):
+        self.function = function
+        self.name = name
+
+class EnvReference:
+    def __init__(self, name):
+        self.name = name

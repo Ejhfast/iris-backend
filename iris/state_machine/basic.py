@@ -1,10 +1,12 @@
 from .core import StateMachine
 from .. import iris_objects
+import uuid
 
 class AssignableMachine(StateMachine):
     arg_name = None
     def assign(self, value, name=None):
         if len(self.context["assign"]) > 0:
+            print(self.context)
             curr_assign = self.context["assign"].pop()
             print("ASSIGN", curr_assign, value, name)
             self.context["ASSIGNMENTS"][curr_assign] = value
@@ -22,6 +24,7 @@ class DoAll(AssignableMachine):
         self.states = states
         for i, _ in enumerate(self.states):
             if i+1 < len(self.states):
+                #if isinstance(self.states[i+1], StateMachine):
                 self.states[i].when_done(self.states[i+1])
         if next_state_obj:
             self.states[-1].when_done(next_state_obj)
@@ -148,7 +151,7 @@ class ValueState(AssignableMachine):
             self.assign(self.value, name=self.value.name)
         else:
             self.assign(self.value)
-        return self.value
+        return self.assign
 
 class Value:
     def __init__(self, result, context):
@@ -165,3 +168,21 @@ class PrintVar(StateMachine):
         self.var(self.context)
         name, named_value, value = self.var.name, self.var.get_named_value(), self.var.get_value()
         return Print(self.func(name, named_value, value)).when_done(self.get_when_done_state())
+
+class Scope:
+    def init_scope(self):
+        self.scope = str(uuid.uuid4()).upper()[0:10]
+    def gen_scope(self, name):
+        return self.scope + "_" + name
+    def read_variable(self, varname):
+        scope_var = self.gen_scope(varname)
+        if scope_var in self.context["ASSIGNMENTS"]:
+            return self.context["ASSIGNMENTS"][scope_var]
+        return None
+    def write_variable(self, varname, value):
+        scope_var = self.gen_scope(varname)
+        self.context["ASSIGNMENTS"][scope_var] = value
+    def delete_variable(self, varname):
+        scope_var = self.gen_scope(varname)
+        if scope_var in self.context["ASSIGNMENTS"]:
+            del self.context["ASSIGNMENTS"][scope_var]

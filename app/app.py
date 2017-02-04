@@ -7,7 +7,8 @@ import sys
 import aiohttp_cors
 sys.path.insert(0, os.path.abspath('..'))
 from iris import stdlib
-from iris import EventLoop, IRIS
+from iris import EventLoop
+from iris import state_machine as sm
 import util
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
@@ -22,8 +23,9 @@ cors = aiohttp_cors.setup(app)
 content = None
 
 state_machine = EventLoop()
-IRIS.train_model()
-iris = IRIS
+# IRIS.train_model()
+iris = sm.IRIS_MODEL#IRIS
+iris.train_model()
 
 def add_cors(route):
     cors.add(route, {"*": aiohttp_cors.ResourceOptions(

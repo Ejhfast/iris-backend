@@ -68,6 +68,8 @@ def detect_type(x):
         return "dataset"
     elif isinstance(x, iris_objects.IrisDataframe):
         return "dataframe"
+    elif isinstance(x, iris_objects.FunctionWrapper):
+        return "function"
     else:
         return str(type(x))
 

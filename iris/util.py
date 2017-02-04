@@ -22,11 +22,13 @@ def is_data(result):
 
 def print_assignment(name, named_value, value):
     print(value, type(value), named_value)
-    if not named_value or named_value == "COMMAND VALUE":
+    if (named_value == None) or named_value == "COMMAND VALUE":
         if is_data(value):
             return ["For {}, I am using:".format(name), {"type":"data", "value":prettify_data(value)}]
         if isinstance(value, iris_objects.IrisId):
             return []
+        if isinstance(value, iris_objects.FunctionWrapper):
+            return ["For {}, I am using:".format(name), "<Bound Function: {}>".format(value.name)]
         return ["I am using {} for {}.".format(value, name)]
     return ["I am using {} for {}.".format(named_value, name)]
 

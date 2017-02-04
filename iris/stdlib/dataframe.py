@@ -1,4 +1,4 @@
-from .. import IRIS, IrisCommand
+from .. import IrisCommand
 from .. import state_types as t
 from .. import state_machine as sm
 from .. import util as util

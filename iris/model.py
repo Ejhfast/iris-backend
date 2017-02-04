@@ -12,11 +12,19 @@ class IrisBase:
         self.vectorizer = CountVectorizer()
         self.env = {}
         self.env_order = {}
+        self.plots = {}
         self.history = {"history": [], "currentConvo": { 'messages': [], 'title': None, 'hidden': False, 'id': 0, 'args': {} }}
+        self.inputs = []
+        self.past_inputs = []
 
     def add_to_env(self, name, result):
         self.env[name] = result
         self.env_order[name] = len(self.env_order)
+
+    def gen_plot_id(self, name):
+        if not name in self.plots:
+            self.plots[name] = len(self.plots)
+        return self.plots[name]
 
     def set_history(self, request):
         self.history = request["conversation"]
@@ -29,6 +37,16 @@ class IrisBase:
         self.env_order = data["env_order"]
         self.history = data["history"]
 
+    def add_command(self, command):
+        print("REGISTERING AS", command.title, command.training_examples())
+        class_index = len(self.class_functions)
+        self.class_functions[class_index] = command
+        for command_string in command.training_examples():
+            lower_command = command_string.lower()
+            self.cmd2class[lower_command] = class_index
+            self.class2cmd[class_index].append(lower_command)
+        return class_index
+
     def iris(self):
         return self
 
@@ -40,34 +58,24 @@ class IrisBase:
     def predict_input(self, query):
         return self.model.predict_proba(self.vectorizer.transform([query]))
 
-    def learn_from_example(self, cls_idx, query_string, arg_triple):
-        succs = [x[2] for x in arg_triple]
-        print("learning")
-        print(succs)
-        if not all(succs):
-            return False, None
-        else:
-            arg_map = {}
-            for name,val,_ in arg_triple: arg_map[str(val)] = name
-            transform = []
-            query_words = query_string.lower().split()
-            print(arg_map)
-            for w in query_words:
-                print(w, w in arg_map)
-                if w in arg_map:
-                    transform.append("{"+arg_map[w]+"}")
-                else:
-                    transform.append(w)
-            command_string = " ".join(transform)
-            if command_string in self.cmd2class: return False, None
-            self.cmd2class[command_string] = cls_idx
-            self.class2cmd[cls_idx].append(command_string)
-            self.train_model()
-            return True, command_string
+    def learn(self, cmd, bindings):
+        if cmd.query == None: return False, None
+        query_words = cmd.query.lower().split()
+        out = []
+        inverse_bindings = {str(v):k for k,v in bindings.items()}
+        for w in query_words:
+            if w in inverse_bindings:
+                out.append("{"+inverse_bindings[w]+"}")
+            else:
+                out.append(w)
+        new_command_string = " ".join(out)
+        if new_command_string in self.cmd2class: return False, None
+        self.cmd2class[new_command_string] = cmd.class_index
+        self.class2cmd[cmd.class_index].append(new_command_string)
+        self.train_model()
+        return True, new_command_string
 
-    def get_predictions(self, text, n=1):
+    def predict_commands(self, text, n=1):
         predictions = self.predict_input(text)[0].tolist()
-        sorted_predictions = sorted([(i,self.class2cmd[i],x) for i,x in enumerate(predictions)], key=lambda x: x[-1], reverse=True)
+        sorted_predictions = sorted([(self.class_functions[i],x) for i,x in enumerate(predictions)], key=lambda x: x[-1], reverse=True)
         return sorted_predictions[:n]
-
-IRIS = IrisBase()
