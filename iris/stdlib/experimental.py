@@ -22,6 +22,26 @@ class TestWorkLoop(IrisCommand):
 
 testWorkLoop = TestWorkLoop()
 
+class TestWhile(IrisCommand):
+    title = "while statement"
+    argument_types = {
+        "test": sm.WhileState()
+    }
+    def command(self, test):
+        return test
+
+testWhile = TestWhile()
+
+class TestIf(IrisCommand):
+    title = "if statement"
+    argument_types = {
+        "test": sm.IfState()
+    }
+    def command(self, test):
+        return test
+
+testIf = TestIf()
+
 class TestGetFunction(IrisCommand):
     title = "get a function"
     argument_types = {
@@ -31,6 +51,16 @@ class TestGetFunction(IrisCommand):
         return test
 
 testGetFunction = TestGetFunction()
+
+class PokeHoles(IrisCommand):
+    title = "poke holes"
+    argument_types = {
+        "test": sm.CallMakeHoles()
+    }
+    def command(self, test):
+        return "Great, saved the new function."
+
+pokeHoles = PokeHoles()
 
 class MakePartial(IrisCommand):
     title = "make a partial function"
@@ -56,15 +86,17 @@ class CallFunction(IrisCommand):
 callFunction = CallFunction()
 
 class MakeCommand(IrisCommand):
-    title = "save last block as iris command"
+    title = "save last iris command as {name}"
+    examples = ["save last iris command {name}"]
     argument_types = {
         "name": t.String("What would you like to call this new command?"),
     }
     def command(self, name):
         new_func = self.iris.env["__MEMORY_FUNC__"]
         new_func.title = name
-        new_func.__class__ = IrisCommand
+        new_func.set_output()
         new_func.class_index = self.iris.add_command(new_func)
+        new_func.compiled=False
         self.iris.train_model()
         return name
     def explanation(self, result):

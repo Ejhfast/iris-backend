@@ -17,7 +17,10 @@ def primitive_or_question(object, text, doing_match):
         return object.convert_type(text, doing_match)
     return object == text, text
 
-print(dir(sm))
+def is_pronoun(text):
+    if text in ["this", "that", "these", "those", "it"]:
+        return True
+    return False
 
 class EnvVar(sm.AssignableMachine):
     def __init__(self, question="Please give me a value for {}:", iris=IRIS):
@@ -43,7 +46,10 @@ class EnvVar(sm.AssignableMachine):
         return False, None
 
     def convert_type(self, text, doing_match=False):
-        if text in self.iris.env and self.is_type(self.iris.env[text]):
+        if is_pronoun(text):
+            if not doing_match: self.assign(iris_objects.EnvReference("__MEMORY__"), name=text)
+            return True, iris_objects.EnvReference("__MEMORY__")
+        elif text in self.iris.env and self.is_type(self.iris.env[text]):
             if not doing_match: self.assign(iris_objects.EnvReference(text), name=text)#self.iris.env[text], name=text)
             return True, iris_objects.EnvReference(text)#self.iris.env[text]
         else:
@@ -89,7 +95,7 @@ class String(EnvVar):
         return ["I could not find '{}' in the environment or convert it to an string. Please try again:".format(text)]
 
     def type_from_string(self, x):
-        return True, x
+        return True, x.replace("\"","") # sketch
 
 class Array(EnvVar):
     def is_type(self, x):

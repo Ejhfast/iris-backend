@@ -37,14 +37,14 @@ class LoadEnv(IrisCommand):
 loadEnv = LoadEnv()
 
 class StoreCommand(IrisCommand):
-    title = "save value of last command"
-    examples = [ "save last as {name}" ]
+    title = "save {value} to {name}"
+    examples = ["save {value} as {name}" ]
     argument_types = {
-        "cmd_val": t.Memory(),
+        "value": t.EnvVar(),
         "name": t.String("What name would you like to save it as?")
     }
-    def command(self, cmd_val, name):
-        self.iris.add_to_env(name, cmd_val)
-        return cmd_val
+    def command(self, value, name):
+        self.iris.add_to_env(name, value)
+        return value
 
 storeCommand = StoreCommand()

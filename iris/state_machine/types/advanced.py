@@ -217,5 +217,5 @@ class Memory(sm.AssignableMachine):
         super().__init__()
         self.accepts_input = False
     def next_state_base(self, text):
-        self.assign(self.iris.env["__MEMORY__"])
-        return self.iris.env["__MEMORY__"]
+        self.assign(iris_objects.EnvReference("__MEMORY__"))
+        return iris_objects.EnvReference("__MEMORY__")

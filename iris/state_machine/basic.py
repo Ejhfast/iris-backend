@@ -142,13 +142,17 @@ class SequentialMachine:
         return DoAll(self.states)
 
 class ValueState(AssignableMachine):
-    def __init__(self, value):
+    def __init__(self, value, name=None):
         self.value = value
+        self.name = name
         super().__init__()
         self.accepts_input = False
     def next_state_base(self, text):
+        print(self.value, self.name)
         if isinstance(self.value, iris_objects.IrisValue):
             self.assign(self.value, name=self.value.name)
+        elif self.name:
+            self.assign(self.value, name=self.name)
         else:
             self.assign(self.value)
         return self.assign
@@ -182,6 +186,12 @@ class Scope:
     def write_variable(self, varname, value):
         scope_var = self.gen_scope(varname)
         self.context["ASSIGNMENTS"][scope_var] = value
+    def append_variable(self, varname, value):
+        scope_var = self.gen_scope(varname)
+        if not scope_var in self.context["ASSIGNMENTS"]:
+            self.context["ASSIGNMENTS"][scope_var] = [value]
+        else:
+            self.context["ASSIGNMENTS"][scope_var].append(value)
     def delete_variable(self, varname):
         scope_var = self.gen_scope(varname)
         if scope_var in self.context["ASSIGNMENTS"]:

@@ -3,6 +3,7 @@ import numpy as np
 import json
 from . import iris_objects
 import re
+import csv
 
 def split_with_quotes(string, delim = " "):
     return [p for p in re.split("({}|\\\".*?\\\"|'.*?')".format(delim), string) if p.strip()]
@@ -27,6 +28,8 @@ def print_assignment(name, named_value, value):
             return ["For {}, I am using:".format(name), {"type":"data", "value":prettify_data(value)}]
         if isinstance(value, iris_objects.IrisId):
             return []
+        if isinstance(value, iris_objects.EnvReference):
+            return ["For {}, I am using {}".format(name, value.name)]
         if isinstance(value, iris_objects.FunctionWrapper):
             return ["For {}, I am using:".format(name), "<Bound Function: {}>".format(value.name)]
         return ["I am using {} for {}.".format(value, name)]
@@ -73,11 +76,15 @@ def is_arg(s):
     if len(s)>2 and s[0] == "{" and s[-1] == "}": return True
     return False
 
+def split_line(line, delim = ","):
+    return [x for x in csv.reader([line], delimiter=delim)][0]
+
 # attempt to match query string to command and return mappings
 def arg_match(query_string, command_string):#, types):
     maps = {}
     labels = []
-    query_words, cmd_words = [shlex.split(x.lower()) for x in [query_string, command_string]]
+    query_words, cmd_words = [split_line(x.lower(), delim=" ") for x in [query_string, command_string]]
+    print("SPLIT", query_words, cmd_words)
     if len(query_words) != len(cmd_words): return False, {}
     for qw, cw in zip(query_words, cmd_words):
         if is_arg(cw):

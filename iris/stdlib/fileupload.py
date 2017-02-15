@@ -4,8 +4,7 @@ from iris import state_machine as sm
 from iris import util
 import csv
 
-def split_line(line, delim = ","):
-    return [x for x in csv.reader([line], delimiter=delim)][0]
+split_line = util.split_line
 
 def check_file_header(file_str, delim=","):
     first_line = file_str.split("\n")[0]

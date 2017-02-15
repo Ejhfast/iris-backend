@@ -45,8 +45,8 @@ class StateMachineRunner:
             self.original_state.reset()
     # proceed to next state for machine
     def next_state(self, text):
-        self.previous_state.append(self.current_state)
-        self.previous_context.append(copy.deepcopy(self.current_state.context))
+        #self.previous_state.append(self.current_state)
+        #self.previous_context.append(copy.deepcopy(self.current_state.context))
         new_state = self.current_state.next_state(text)
         print("TRANSITIONING", self.current_state, new_state)
         if isinstance(new_state, StateMachine):
@@ -116,6 +116,11 @@ class StateMachine:
     # write a variable to context
     def write_variable(self, varname, value):
         self.context["ASSIGNMENTS"][varname] = value
+    def append_variable(self, varname, value):
+        if not varname in self.context["ASSIGNMENTS"]:
+            self.context["ASSIGNMENTS"][varname] = [value]
+        else:
+            self.context["ASSIGNMENTS"][varname].append(value)
     def delete_variable(self, varname):
         if varname in self.context["ASSIGNMENTS"]:
             del self.context["ASSIGNMENTS"][varname]
