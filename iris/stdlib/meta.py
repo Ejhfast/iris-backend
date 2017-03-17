@@ -48,3 +48,29 @@ class StoreCommand(IrisCommand):
         return value
 
 storeCommand = StoreCommand()
+
+class RenameVar(IrisCommand):
+    title = "rename {name1} to {name2}"
+    examples = ["change name {value} to {name}" ]
+    argument_types = {
+        "name1": t.String("What is the name of the first variable?"),
+        "name2": t.String("What is the name of the second variable?")
+    }
+    def command(self, name1, name2):
+        self.iris.add_to_env(name2, self.iris.env[name1])
+        self.iris.remove_from_env(name1)
+        return "I renamed {} to {}.".format(name1, name2)
+
+renameVar = RenameVar()
+
+class RemoveVar(IrisCommand):
+    title = "delete {name1}"
+    examples = ["remove {name1} from environment" ]
+    argument_types = {
+        "name1": t.String("What is the name of the variable to remove?"),
+    }
+    def command(self, name1):
+        self.iris.remove_from_env(name1)
+        return "I removed {} from the environment.".format(name1)
+
+removeVar = RemoveVar()

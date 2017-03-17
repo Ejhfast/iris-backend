@@ -6,7 +6,7 @@ class AssignableMachine(StateMachine):
     arg_name = None
     def assign(self, value, name=None):
         if len(self.context["assign"]) > 0:
-            print(self.context)
+            # print(self.context)
             curr_assign = self.context["assign"].pop()
             print("ASSIGN", curr_assign, value, name)
             self.context["ASSIGNMENTS"][curr_assign] = value
@@ -126,7 +126,7 @@ class Variable(StateMachine):
             return self.scope + "_" + self.name
         return self.name
     def next_state_base(self, text):
-        print("VALUE", self.name, self.context)
+        # print("VALUE", self.name, self.context)
         return ValueState(self.get_value()).when_done(self.get_when_done_state())
     def get_value(self):
         return self.context["ASSIGNMENTS"][self.scope_name()]

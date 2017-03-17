@@ -1,5 +1,8 @@
 from .basic import StateMachine, Scope, AssignableMachine, Assign, DoAll, Print, ValueState, Value
 from .advanced import AddToIrisEnv2
+from .command_search import FunctionSearch, ApplySearch
+from .argmatch import ArgMatch, BoundFunction
+from .ast import If, While, Block
 from . import types as t
 from .model import IRIS_MODEL
 from .middleware import Middleware, ExplainMiddleware
@@ -23,6 +26,7 @@ def value_or_program(value):
 
 # here we are going to create a representation of each expression in the env
 # as evaluation continues, we can use this later to learn from user commands
+# depends on: IrisCommand
 def compile_function(function, args):
     new_function = IrisCommand(index_command=False, compiled=True)
     new_function.command = function.command
@@ -33,13 +37,14 @@ def compile_function(function, args):
     new_function.set_output()
     #new_function.output = ["Sure, I can call {}".format(function.title)]
     for key, value in args.items():
-            new_function.binding_machine[key] = value_or_program(value)
+        new_function.binding_machine[key] = value_or_program(value)
     return new_function
 
 # since variables are behaving more like references now, where the underlying
 # value can change, and that should be reflected if e.g., a function is called again
 # TODO: this is more general now, represents processing done on arguments before they
 # are passed to function command code
+# depends on: FunctionReturn, iris_objects
 def resolve_env_ref(iris, var):
     if isinstance(var, iris_objects.EnvReference):
         return iris.env[var.name]
@@ -48,23 +53,29 @@ def resolve_env_ref(iris, var):
     return var
 
 # similar name helper for assignment names
+# depends on: iris_objects
 def resolve_env_name(iris, var):
     if isinstance(var, iris_objects.EnvReference):
         return var.name
     return var
 
+
+# this is a wrapper to call MakeHolesFunction on a function specified by the user
+# depends on: basics, MakeHolesFunction, FunctionSearch
 class CallMakeHoles(Scope, AssignableMachine):
     def __init__(self):
         super().__init__()
         self.accepts_input = False
         self.init_scope()
     def next_state_base(self, text):
-        if not self.read_variable("for_holes") == None:
-            get_func = self.read_variable("for_holes").function.function # Wrapper.Args
+        if not self.read_variable("FUNCTION") == None:
+            get_func = self.read_variable("FUNCTION").function.function # Wrapper.Args
             return MakeHolesFunction(get_func).when_done(self.get_when_done_state())
-        return Assign(self.gen_scope("for_holes"), FunctionSearch()).when_done(self)
+        return Assign(self.gen_scope("FUNCTION"), FunctionSearch()).when_done(self)
 
-# clean up
+# Experimental, needs refactoring
+# This function recurses over an Iris AST, poking "holes" in bound arguments
+# depends on: basics, Function, Block, If (AST?)
 class MakeHolesFunction(Scope, AssignableMachine):
     def __init__(self, function):
         self.function = function
@@ -78,24 +89,29 @@ class MakeHolesFunction(Scope, AssignableMachine):
                 if self.read_variable(arg) == False:
                     del self.function.binding_machine[arg]
             return ValueState("HOLES").when_done(self.get_when_done_state())
+        # here we are walking over all bound arguments to the function
         for arg in self.function.binding_machine.keys():
             if self.read_variable(arg) == None:
                 to_print = Print(["I am inside {}".format(self.function.title)])
+                # test if argument is a function, call recursively
                 if isinstance(self.function.binding_machine[arg], Function):
                     return Assign(self.gen_scope(arg), DoAll([
                         to_print,
                         MakeHolesFunction(self.function.binding_machine[arg])
                         ])).when_done(self)
+                # test if argument is block, recurse over each individual statement
                 elif isinstance(self.function.binding_machine[arg], Block):
                     return Assign(self.gen_scope(arg), DoAll([
                         MakeHolesFunction(x) for x in self.function.binding_machine[arg].get_states()
                     ])).when_done(self)
+                # test if function is an if statement, treat appropriately (more experimental)
                 elif isinstance(self.function.binding_machine[arg], If):
                     if_stmt = self.function.binding_machine[arg]
                     return Assign(self.gen_scope(arg), DoAll([
                         MakeHolesFunction(if_stmt.condition),
                         MakeHolesFunction(if_stmt.true_exp)
                     ]))
+                # otherwise, this is a concrete value, ask if the user wants to keep it
                 return Assign(self.gen_scope(arg), DoAll([
                     to_print,
                     Print(util.print_assignment(arg, None, self.function.binding_machine[arg].value)),
@@ -103,68 +119,8 @@ class MakeHolesFunction(Scope, AssignableMachine):
                         yes=True,
                         no=False)])).when_done(self)
 
-class ArgMatch(AssignableMachine):
-    def __init__(self, function, query, iris = IRIS_MODEL):
-        self.iris = IRIS_MODEL
-        super().__init__()
-        self.function = function
-        self.query = query
-        self.accepts_input = False
-    def next_state_base(self, text):
-        matches, bindings = [], {}
-        argument_types = self.function.argument_types
-        for cmd in self.function.training_examples():
-            succ, map_ = util.arg_match(self.query, cmd)
-            if succ:
-                convert_types = {k: argument_types[k].convert_type(v, doing_match=True) for k,v in map_.items()}
-                if all([v[0] for k,v in convert_types.items()]):
-                    for arg, vals in convert_types.items():
-                        bindings[arg] = ValueState(vals[1], name=map_[arg])
-        return BoundFunction(bindings, self.function).when_done(self.get_when_done_state())
-
-class FunctionSearch(AssignableMachine):
-    def __init__(self, question = ["What function would you like to retrieve?"], text = None, iris = IRIS_MODEL):
-        self.iris = IRIS_MODEL
-        super().__init__()
-        self.question = question
-        self.text = text
-        self.output = question
-        if text:
-            self.output = []
-            self.accepts_input = False
-    def base_hint(self, text):
-        predictions = self.iris.predict_commands(text, 3)
-        return [x[0].title for x in predictions]
-    def next_state_base(self, text):
-        if self.text:
-            text = self.text
-        command, score = self.iris.predict_commands(text)[0]
-        self.command = copy.copy(command)
-        self.command.init_scope() # setup a new scope
-        self.command.set_query(text)
-        match_and_return = iris_objects.FunctionWrapper(ArgMatch(self.command, text), self.command.title)
-        self.assign(match_and_return)
-        return Value(match_and_return, self.context)
-
-class ApplySearch(Scope, AssignableMachine):
-    def __init__(self, question = ["What would you like to do?"], text = None):
-        self.question = question
-        self.function_generator = FunctionSearch(self.question, text=text)
-        super().__init__()
-        self.accepts_input = False
-        self.init_scope()
-    def reset(self):
-        self.reset_context()
-        return self
-    def base_hint(self, text):
-        return self.function_generator.hint(text)
-    def next_state_base(self, text):
-        if self.read_variable("function") == None:
-            return Assign(self.gen_scope("function"), self.function_generator).when_done(self)
-        command = self.read_variable("function").function # Wrapper
-        self.command = command.function
-        return command.when_done(self.get_when_done_state())
-
+# This middleware allows us to inject a function application within any argument resolution
+# depends on: ApplySearch, FunctionSearch, WorkLoop
 class IrisMiddleware(Middleware):
     def __init__(self, arg, iris = IRIS_MODEL):
         self.iris = IRIS_MODEL
@@ -175,13 +131,16 @@ class IrisMiddleware(Middleware):
         return False
     def hint(self, text):
         predictions = self.iris.predict_commands(text, 3)
-        return [x[0].title for x in predictions]
+        arg_matches = [(util.first_match([util.arg_match(text, x) for x in self.iris.class2cmd[cmd[0].class_index]]), cmd[0].title) for cmd in predictions]
+        return [util.replace_args(*x) for x in arg_matches]
     def transform(self, caller, state, text):
         state.clear_error()
         if isinstance(caller, WorkLoop) or isinstance(caller, FunctionSearch):
             return state
         return ApplySearch(text=text).when_done(caller.get_when_done_state()).set_arg_name(self.arg)
 
+# This is the core logic that defines conversations-as-function, possibly merge with IrisCommand
+# depends on: basics, StateException, compile_function, IrisMiddleware
 class Function(Scope, AssignableMachine):
     title = "Function title"
     argument_types = {}
@@ -243,12 +202,14 @@ class Function(Scope, AssignableMachine):
                 # second choice is the logic for user argument extraction
                 # we should always have this
                 else:
-                    type_machine = self.argument_types[arg].set_arg_name(arg).add_middleware(IrisMiddleware(arg))
+                    type_machine = self.argument_types[arg].set_arg_name(arg)#.add_middleware(IrisMiddleware(arg))
                 out.append(Assign(self.gen_scope(arg), type_machine))
                 return DoAll(out).when_done(self)
     def command(self):
         pass
 
+# Here is the prettier form of functions that we expose to users
+# depends on: Function, iris_objects, ExplainMiddleware
 class IrisCommand(Function):
     argument_help = {}
     def __init__(self, index_command=True, compiled=False):
@@ -296,39 +257,18 @@ class IrisCommand(Function):
                 out.append({"type": "image", "value": r.value})
             elif isinstance(r, iris_objects.FunctionWrapper):
                 out.append("<Bound function: {}>".format(r.name))
+            elif isinstance(r, iris_objects.IrisModel):
+                out.append("<{} X={} y={}>".format(r.model.__class__.__name__, util.print_list(r.dataframe_X.column_names, 4), util.print_list(r.dataframe_y.column_names, 4)))
+            elif isinstance(r, iris_objects.IrisDataframe):
+                out.append("<Dataframe columns={}>".format(util.print_list(r.column_names, 6)))
             elif util.is_data(r):
                 out.append({"type": "data", "value": util.prettify_data(r)})
             else:
                 out.append(str(r))
         return out
 
-class BoundFunction(AssignableMachine):
-    def __init__(self, bindings, function, iris = IRIS_MODEL):
-        self.iris = iris
-        self.bindings = bindings
-        self.function = function
-        super().__init__()
-        self.accepts_input = False
-    def set_query(self, query):
-        self.function.query = query
-    def next_state_base(self, text):
-        self.function.binding_machine = {**self.bindings, **self.function.binding_machine} #binding_machine
-        return self.function.when_done(self.get_when_done_state())
-
-class PrintFunction(Scope, AssignableMachine):
-    def __init__(self, function):
-        self.function = function
-        super().__init__()
-        self.accepts_input = False
-        self.init_scope()
-    def next_state_base(self, text):
-        if self.read_variable("result") == None:
-            return Assign(self.gen_scope("result"), self.function).when_done(self)
-        else:
-            result = self.read_variable("result")
-            self.assign(result)
-            return Print(["{}".format(result)]).when_done(self.get_when_done_state())
-
+# This state machine prints out an exception and exits the current state loop (if any)
+# depends on: basics
 class StateException(StateMachine):
     def __init__(self, exception_text):
         super().__init__()
@@ -340,19 +280,8 @@ class StateException(StateMachine):
             self.exception_text
         ]).when_done(self.get_when_done_state())
 
-class Block(AssignableMachine):
-    def __init__(self, states):
-        super().__init__()
-        self.states = []
-        self.accepts_input = False
-        for i in range(0, len(states)-1):
-            self.states.append(Assign("junk", states[i]))
-        self.states.append(states[-1])
-    def next_state_base(self, text):
-        return DoAll(self.states).when_done(self.get_when_done_state())
-    def get_states(self):
-        return [state.assign_state for state in self.states[:-1]] + [self.states[-1]]
-
+# This is the current way of processing a block of expressions in the system
+# depends on: basics, ApplySearch, FunctionReturn, Block
 class WorkLoop(AssignableMachine):
     def __init__(self):
         super().__init__()
@@ -376,24 +305,8 @@ class WorkLoop(AssignableMachine):
             self.output = []#["Still in workflow. What would you like to do next?"]
             return Assign("last_command", ApplySearch(text=text)).when_done(self)
 
-
-class While(AssignableMachine):
-    def __init__(self, condition, true_exp):
-        self.condition = condition
-        self.true_exp = true_exp
-        super().__init__()
-        self.accepts_input = False
-    def next_state_base(self, text):
-        print("BACK IN WHILE")
-        # this boilerplate needs to be extracted somewhere
-        condition_copy = copy.copy(self.condition)
-        condition_copy.set_output()
-        condition_copy.init_scope()
-        true_exp_copy = copy.copy(self.true_exp)
-        true_exp_copy.set_output()
-        true_exp_copy.init_scope()
-        return If(condition_copy, true_exp_copy, continuation=self).when_done(self.get_when_done_state())
-
+# How users define a while loop (experimental)
+# depends on: basics, FunctionReturn, While (AST), ApplySearch
 class WhileState(AssignableMachine):
     def __init__(self):
         super().__init__()
@@ -411,26 +324,8 @@ class WhileState(AssignableMachine):
             ]).when_done(self.get_when_done_state())
         return ValueState(FunctionReturn(NoneState(), program)).when_done(self.get_when_done_state())
 
-class If(Scope, AssignableMachine):
-    def __init__(self, condition, true_exp, continuation=None):
-        self.condition = condition
-        self.true_exp = true_exp
-        self.continuation = continuation
-        super().__init__()
-        self.init_scope()
-        self.accepts_input = False
-    def true_continutation(self):
-        if self.continuation:
-            return self.continuation
-        else:
-            return self.get_when_done_state()
-    def next_state_base(self, text):
-        if self.read_variable("condition") == None:
-            return Assign(self.gen_scope("condition"), self.condition).when_done(self)
-        elif self.read_variable("condition").value == True:
-            return self.true_exp.when_done(self.true_continutation())
-        return ValueState(NoneState()).when_done(self.get_when_done_state())
-
+# How user executes and If statement
+# depends on: basics, IF, FunctionReturn, ApplySearch
 class IfState(AssignableMachine):
     def __init__(self):
         super().__init__()
@@ -445,3 +340,36 @@ class IfState(AssignableMachine):
         if self.read_variable("condition").value == True:
             return ValueState(FunctionReturn(self.read_variable("true_exp").value, program)).when_done(self.get_when_done_state())
         return ValueState(FunctionReturn(NoneState(), program)).when_done(self.get_when_done_state())
+
+
+class GetEnvValue(AssignableMachine):
+    def __init__(self, env_val):
+        self.env_val = env_val
+        super().__init__()
+        self.accepts_input = False
+    def next_state_base(self, text):
+        return env_val.get_value(IRIS_MODEL)
+
+# do some type checking
+
+class TypeCheck(Scope, AssignableMachine):
+    def __init__(self, type_, state_machine):
+        self.to_check = type_
+        self.to_run = state_machine
+        super().__init__()
+        self.accepts_input = False
+        self.init_scope()
+    def next_state_base(self, text):
+        print("in type check")
+        if self.read_variable("RUN_RESULT") == None:
+            return Assign(self.gen_scope("RUN_RESULT"), self.to_run).when_done(self)
+        result = self.read_variable("RUN_RESULT").value # FunctionReturn
+        if isinstance(result, iris_objects.EnvReference):
+            result_val = result.get_value()
+        else:
+            result_val = result
+        print("checking...")
+        if self.to_check.is_type(result_val):
+            self.assign(result_val, name="COMMAND VALUE")
+            return None
+        return t.conversion_raw(result_val, self.to_check, self.get_when_done_state())

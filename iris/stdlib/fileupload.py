@@ -10,7 +10,6 @@ def check_file_header(file_str, delim=","):
     first_line = file_str.split("\n")[0]
     cols = [x.lower() for x in split_line(first_line)]
     types = rows_and_types(cols)
-    print(set(types))
     if len(set(types)) > 1:
         return False, cols
     return True, cols
@@ -112,7 +111,6 @@ class AskForHeaders(sm.StateMachine):
     def __init__(self):
         super().__init__()
     def get_output(self):
-        print(self.context)
         start_from = 1 if self.read_variable("throw_away") else 0
         sample_data = split_line(self.read_variable("loaded_file").content.split("\n")[start_from])
         return [

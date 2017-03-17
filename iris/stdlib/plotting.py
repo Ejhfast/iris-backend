@@ -111,6 +111,47 @@ class PlotAUC(IrisCommand):
 
 plotAUC = PlotAUC()
 
+class PlotStats(IrisCommand):
+    title = "plot two-sample test {data}"
+    examples = [ "plot p-values {data}" ]
+    argument_types = {
+        "data": t.EnvVar("What would you like to plot?"),
+        "n": t.Int("How many relationships would you like to plot?"),
+        "name": t.String("Where would you like to save the plot?")
+    }
+    def command(self, data, n, name):
+        import matplotlib
+        matplotlib.use('AGG')
+        import matplotlib.pyplot as plt
+        import numpy as np
+        dataM = data.to_matrix()
+        odds = dataM[0,:,2]
+        oddsI = [(i, odd) for i,odd in enumerate(odds) if dataM[0,i,1] <= 0.05]
+        oddsH = sorted([x for x in oddsI if x[1] > 1], key=lambda x: x[1], reverse=True)[:n]
+        oddsL = sorted([(x[0], 1.0/x[1]) for x in oddsI if x[1] < 1], key=lambda x: x[1], reverse=True)[:n]
+        valuesH, valuesL = [[x[1] for x in y] for y in [oddsH, oddsL]]
+        indexesH, indexesL = [[x[0] for x in y] for y in [oddsH, oddsL]]
+        namesH, namesL = [[data.column_names[i] for i in y] for y in [indexesH, indexesL]]
+        valuesH, valuesL, namesH, namesL = [list(reversed(x)) for x in [valuesH, valuesL, namesH, namesL]]
+        f = plt.figure(self.iris.gen_plot_id(name))
+        ax1 = f.add_subplot(211)
+        ax1.barh(np.arange(len(namesH)), valuesH, color=['green'])
+        ax1.set_yticks(np.arange(len(namesH)))
+        ax1.set_yticklabels(namesH)
+        ax1.set_title(data.pops[0])
+        ax1.set_xlabel("odds associated with {}".format(data.pops[0]))
+        ax2 = f.add_subplot(212)
+        ax2.barh(np.arange(len(namesL)), valuesL)
+        ax2.set_yticks(np.arange(len(namesL)))
+        ax2.set_yticklabels(namesL)
+        ax2.set_title(data.pops[1])
+        ax2.set_xlabel("odds associated with {}".format(data.pops[1]))
+        plt.tight_layout()
+        plot_data = iris_objects.IrisImage(f, name)
+        self.iris.add_to_env(name, plot_data)
+        return plot_data
+
+plotStats = PlotStats()
 
 class PlotHistogram(IrisCommand):
     title = "plot a histogram on {data}"

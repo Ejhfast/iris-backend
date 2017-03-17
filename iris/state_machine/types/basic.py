@@ -1,10 +1,14 @@
 from ... import util
 from ..model import IRIS_MODEL
 from ... import state_machine as sm
+from .. import command_search as cs
 from ... import iris_objects
+from .converters import conversion, conversion_raw, type_dict
 import numpy as np
 
 IRIS = IRIS_MODEL
+
+apply_search = cs.ApplySearch()
 
 def OR(tuple_list):
     for tuple in tuple_list:
@@ -26,6 +30,7 @@ class EnvVar(sm.AssignableMachine):
     def __init__(self, question="Please give me a value for {}:", iris=IRIS):
         self.iris = iris
         self.question = question
+        self.converters = []
         super().__init__()
 
     def string_representation(self, value):
@@ -59,17 +64,29 @@ class EnvVar(sm.AssignableMachine):
                 return True, result
             return False, self.error_message(text)
 
+    def convert_type_wrap(self, text, doing_match=False):
+        success, result = self.convert_type(text, doing_match)
+        if success:
+            return True, result
+        # the True's below are sketchy
+        elif text in self.iris.env:
+            return True, conversion_raw(self.iris.env[text], self, self.get_when_done_state())
+        return False, None
+
     def base_hint(self, text):
         success, _ = self.convert_type(text, doing_match=True)
         if success:
             return ["'{}' works as an arg".format(text)]
+        elif text in self.iris.env:
+            return ["use '{}' as arg (not correct type)".format(text)]
         else:
-            return []
+            return cs.ApplySearch().hint(text)
 
     def next_state_base(self, text):
-        success, result = self.convert_type(text)
+        success, result = self.convert_type_wrap(text)
         if success: return result
-        return self.set_error(result)
+        return sm.TypeCheck(self, cs.ApplySearch(text=text)).when_done(self.get_when_done_state())
+        #return self.set_error(result)
 
 class Int(EnvVar):
     def is_type(self, x):
@@ -82,6 +99,21 @@ class Int(EnvVar):
     def type_from_string(self, x):
         try:
             result = int(x)
+            return True, result
+        except:
+            return False, None
+
+class Float(EnvVar):
+    def is_type(self, x):
+        if isinstance(x, float): return True
+        return False
+
+    def error_message(self, text):
+        return ["I could not find '{}' in the environment or convert it to an float. Please try again:".format(text)]
+
+    def type_from_string(self, x):
+        try:
+            result = float(x)
             return True, result
         except:
             return False, None
@@ -166,3 +198,60 @@ class VarName(sm.AssignableMachine):
         self.assign(result, text)
         VarName.global_id += 1
         return result
+
+class YesNo(sm.AssignableMachine):
+    def __init__(self, question, yes=None, no=None):
+        self.yes = yes
+        self.no = no
+        super().__init__()
+        if isinstance(question, list):
+            self.output = question
+        else:
+            self.output = [question]
+
+    def string_representation(self, value):
+        if isinstance(value, str) or isinstance(value, int):
+            return str(value)
+        return "CHOICE FOR {}".format(self.arg_name)
+
+    def convert_type(self, text):
+        return OR([
+            primitive_or_question(self.yes, text),
+            primitive_or_question(self.no, text)
+        ])
+
+    def base_hint(self, text):
+        if util.verify_response(text):
+            return ["triggers yes"]
+        return ["triggers no"]
+
+    def next_state_base(self, text):
+        new_state = self
+        if util.verify_response(text): new_state = self.yes
+        else: new_state = self.no
+        if not isinstance(new_state, sm.StateMachine):
+            self.assign(new_state)
+        return new_state
+
+    def when_done(self, state):
+        if isinstance(self.yes, sm.StateMachine):
+            self.yes.when_done(state)
+        if isinstance(self.no, sm.StateMachine):
+            self.no.when_done(state)
+        self.when_done_state = state
+        return self
+
+# conversion
+
+class FloatToInt(sm.AssignableMachine):
+    def __init__(self, user_input):
+        self.user_input = user_input
+        super().__init__()
+        self.accepts_input = False
+    def next_state_base(self, text):
+        to_int = int(self.user_input)
+        return YesNo("Would you like to convert the float {} to an int {}".format(self.user_input, to_int),
+            yes=sm.ValueState(to_int, name=str(to_int)).when_done(self.get_when_done_state()),
+            no=self.get_when_done_state())
+
+type_dict["Int"].append((Float, FloatToInt))

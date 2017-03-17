@@ -1,11 +1,14 @@
 from . import util
 from ..model import IRIS_MODEL
 from ... import state_machine as sm
+from .. import command_search as cs
 from . import iris_objects
-from .basic import EnvVar
+from .basic import EnvVar, YesNo, OR, primitive_or_question
+from .converters import conversion, type_dict
 # for statistical machine
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import CountVectorizer
+import numpy as np
 
 IRIS = IRIS_MODEL
 
@@ -19,95 +22,87 @@ class Dataframe(EnvVar):
     def type_from_string(self, text):
         return False, None
 
+class DataframeToArray(sm.AssignableMachine):
+    def __init__(self, user_input):
+        self.user_input = user_input
+        super().__init__()
+        self.accepts_input = False
+    def next_state_base(self, text):
+        print("in to array")
+        self_ref = self
+        class GetColumn(sm.AssignableMachine):
+            def __init__(self):
+                self.dataframe = self_ref.user_input
+                super().__init__()
+                self.output = [
+                    "Sure, here are the columns in that dataframe:",
+                    {"type":"data", "value":util.prettify_data(self.dataframe.column_names)},
+                    "Which column would you like to select to use as an array?"
+                ]
+            def base_hint(self, text):
+                if text in self.dataframe.column_names:
+                    return ["'{}' is a valid column".format(text)]
+                return []
+            def next_state_base(self, text):
+                self.assign(self.dataframe.get_column(text), name=text)
+                return sm.Print(["Great, I'm using {}".format(text)]).when_done(self.get_when_done_state())
+        return YesNo("I need an array but you've given me a dataframe. Would you to select a column from the dataframe to use as an array?",
+            yes=GetColumn().when_done(self.get_when_done_state()),
+            no=self.get_when_done_state())
+
+type_dict["Array"].append((Dataframe, DataframeToArray))
+
 class DataframeSelector(sm.AssignableMachine):
     def __init__(self, question, dataframe = None):
         super().__init__()
         self.question = question
         self.dataframe = dataframe
         self.accepts_input = False
-        if self.dataframe:
+        if self.dataframe != None:
             self.write_variable("dataframe", dataframe)
             self.accepts_input = True
-    def reset(self):
-        self.accepts_input = False
-        if self.dataframe:
-            self.write_variable("dataframe", dataframe)
-            self.accepts_input = True
-        return self
     def get_output(self):
-        dataframe = self.read_variable("dataframe")
+        dataframe = self.read_variable("dataframe") # we are assuming EnvReference now...
         if dataframe:
             return [
                 "Here are the current columns in the dataframe",
-                {"type": "data", "value": util.prettify_data(dataframe.column_names)},
+                {"type": "data", "value": util.prettify_data(dataframe.get_value(IRIS_MODEL).column_names)},
                 "Please give me a comma-separated list of the columns you want to use for {}:".format(self.arg_name)
             ]
         return []
     def convert_type(self, x):
         return False, None
     def selector_transform(self, columns):
-        dataframe = self.read_variable("dataframe")
+        dataframe = self.read_variable("dataframe").get_value(IRIS_MODEL)
         return np.array([dataframe.get_column(name) for name in columns]).T
+    def base_hint(self, text):
+        dataframe = self.read_variable("dataframe").get_value(IRIS_MODEL)
+        possible_columns = [x.strip() for x in text.split(",")]
+        if dataframe:
+            if all([col in dataframe.column_names for col in possible_columns]):
+                return ["your selection is a valid set of columns"]
+        return cs.ApplySearch().hint(text)
     def next_state_base(self, text):
-        if not self.read_variable("dataframe"):
+        if self.read_variable("dataframe") == None:
             self.accepts_input = True
             return sm.Assign("dataframe", Dataframe(self.question)).when_done(self)
         else:
-            dataframe = self.read_variable("dataframe")
+            dataframe = self.read_variable("dataframe").get_value(IRIS_MODEL)
             possible_columns = [x.strip() for x in text.split(",")]
             if all([col in dataframe.column_names for col in possible_columns]):
-                selection = self.selector_transform(possible_columns)
+                selection = dataframe.copy_frame(possible_columns)
+                #selection = self.selector_transform(possible_columns)
                 self.assign(selection)
                 dataframe = self.delete_variable("dataframe")
+                self.accepts_input = False
                 return selection
-            return sm.Print(["A least one of those wasn't a valid column name. Try again?"]).when_done(self)
+            return cs.ApplySearch(text=text).when_done(self.get_when_done_state())
+            #return sm.Print(["A least one of those wasn't a valid column name. Try again?"]).when_done(self)
 
 class DataframeNameSelector(DataframeSelector):
     def selector_transform(self, columns):
         dataframe = self.read_variable("dataframe")
         return (dataframe, columns)
-
-class YesNo(sm.AssignableMachine):
-    def __init__(self, question, yes=None, no=None):
-        self.yes = yes
-        self.no = no
-        super().__init__()
-        if isinstance(question, list):
-            self.output = question
-        else:
-            self.output = [question]
-
-    def string_representation(self, value):
-        if isinstance(value, str) or isinstance(value, int):
-            return str(value)
-        return "CHOICE FOR {}".format(self.arg_name)
-
-    def convert_type(self, text):
-        return OR([
-            primitive_or_question(self.yes, text),
-            primitive_or_question(self.no, text)
-        ])
-
-    def base_hint(self, text):
-        if util.verify_response(text):
-            return ["triggers yes"]
-        return ["triggers no"]
-
-    def next_state_base(self, text):
-        new_state = self
-        if util.verify_response(text): new_state = self.yes
-        else: new_state = self.no
-        if not isinstance(new_state, sm.StateMachine):
-            self.assign(new_state)
-        return new_state
-
-    def when_done(self, state):
-        if isinstance(self.yes, sm.StateMachine):
-            self.yes.when_done(state)
-        if isinstance(self.no, sm.StateMachine):
-            self.no.when_done(state)
-        self.when_done_state = state
-        return self
 
 class Select(sm.AssignableMachine):
     def __init__(self, options={}, option_info={}, default=None):

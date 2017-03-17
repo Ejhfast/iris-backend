@@ -45,6 +45,14 @@ def prettify_data(result):
         return json.dumps(result, indent=4, default=str)
     return result
 
+def print_list(lst, n):
+    if len(lst) <= n:
+        return "["+ ", ".join(lst) + "]"
+    half_n = int(n/2)
+    first_p = lst[:half_n]
+    second_p = lst[-half_n:]
+    return "[" + ", ".join(first_p) + ", ..., " + ", ".join(second_p) + "]"
+
 # state machine util, conversation parsing
 
 def get_start_message(messages): return messages[0]["text"]
@@ -93,3 +101,24 @@ def arg_match(query_string, command_string):#, types):
         else:
             if qw != cw: return False, {}
     return True, maps
+
+# helper to walk over match results and return bindings of first
+def first_match(lst):
+    for tup in lst:
+        if tup[0]:
+            return tup[1]
+    return {}
+
+# given a dictionary of bindings, replace words in text (between "{}")
+def replace_args(bindings, text):
+    out = []
+    for word in split_line(text, delim=" "):
+        if is_arg(word):
+            word_ = word[1:-1]
+            if word_ in bindings:
+                out.append("{"+bindings[word_]+"}")
+            else:
+                out.append(word)
+        else:
+            out.append(word)
+    return " ".join(out)

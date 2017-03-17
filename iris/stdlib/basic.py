@@ -2,15 +2,16 @@ from .. import IrisCommand
 from .. import state_types as t
 from .. import state_machine as sm
 from .. import util as util
+from .. import iris_objects
+
 
 class GetArrayLength(IrisCommand):
     title = "get length of array {arr}"
-    examples = ["array {} length"]
+    examples = ["array {arr} length"]
     def command(self, arr: t.Array("What array to get length of?")):
         return arr.shape[0]
 
 getArrayLength = GetArrayLength()
-
 
 class GenerateNumber(IrisCommand):
     title = "generate a random number"
@@ -21,24 +22,14 @@ class GenerateNumber(IrisCommand):
 
 generateNumber = GenerateNumber()
 
-class StatsTest(IrisCommand):
-    title = "stats test"
-    examples = []
-    argument_types = {
-        "response": t.StatisticalState("Would you like to continue?",
-            { "yes": {
-                    "examples": ["yes", "yeah", "okay"],
-                    "state": "Great, done." },
-              "no": {
-                    "examples": ["nope", "no thanks", "no"],
-                    "state": "Bye." }
-            }
-        )
-    }
-    def command(self, response):
-        return response
+class GenerateFloat(IrisCommand):
+    title = "generate a random float"
+    examples = [ "generate float" ]
+    def command(self):
+        import random
+        return float(random.randint(0,100))
 
-statsTest = StatsTest()
+generateFloat = GenerateFloat()
 
 class LessThan(IrisCommand):
     title = "{x} less than {y}"
@@ -78,12 +69,14 @@ class AddTwoNumbers(IrisCommand):
 addTwoNumbers = AddTwoNumbers()
 
 class PrintValue(IrisCommand):
-    title = "print {value}"
-    examples = [ "display {value}", "{}"]
+    title = "show me {value}"
+    examples = [ "display {value}", "{value}", "print {value}"]
     help_text = [
         "This command will display the underlying data for environment variables."
     ]
     def command(self, value : t.EnvVar()):
+        if isinstance(value, iris_objects.IrisDataframe):
+            return value.to_matrix()
         return value
 
 printValue = PrintValue()

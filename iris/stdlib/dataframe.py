@@ -46,9 +46,45 @@ class GetDFColumn(IrisCommand):
         "This command pull a column from a dataframe into the main environment."
     ]
     def command(self, dataframe, column):
+        print("LIWC")
+        print(dataframe.to_matrix().shape)
+        print(len(dataframe.column_names))
+        print(dataframe.column_names)
         return dataframe.get_column(column)
 
 getDFColumn = GetDFColumn()
+
+class FilterDataLessThan(IrisCommand):
+    title = "filter {data} with {column} less than {number}"
+    examples = [ "filter {data} {column} < {number}" ]
+    argument_types = {
+        "data": t.Dataframe("What dataframe to extract the column from?"),
+        "column": t.String("What is the name of the column?"),
+        "number": t.Float("What number must the column be less than?")
+    }
+    help_text = [
+        "This command selects all data where a column is less than a number."
+    ]
+    def command(self, data, column, number):
+        return data.select_data(column, lambda x: x < number)
+
+filterDataLessThan = FilterDataLessThan()
+
+class FilterDataGreaterThan(IrisCommand):
+    title = "filter {data} with {column} greater than {number}"
+    examples = [ "filter {data} {column} > {number}" ]
+    argument_types = {
+        "data": t.Dataframe("What dataframe to extract the column from?"),
+        "column": t.String("What is the name of the column?"),
+        "number": t.Float("What number must the column be greater than?")
+    }
+    help_text = [
+        "This command selects all data where a column is greater than a number."
+    ]
+    def command(self, data, column, number):
+        return data.select_data(column, lambda x: x > number)
+
+filterDataGreaterThan = FilterDataGreaterThan()
 
 class SelectorTest(IrisCommand):
     title = "selector test"

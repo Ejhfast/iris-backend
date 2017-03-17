@@ -1,6 +1,7 @@
 from collections import defaultdict
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import CountVectorizer
+from . import iris_objects
 
 class IrisBase:
 
@@ -20,6 +21,13 @@ class IrisBase:
     def add_to_env(self, name, result):
         self.env[name] = result
         self.env_order[name] = len(self.env_order)
+        if isinstance(result, iris_objects.IrisValue):
+            if not result.name or result.name == "__MEMORY__":
+                result.name = name
+
+    def remove_from_env(self, name):
+        del self.env[name]
+        del self.env_order[name]
 
     def gen_plot_id(self, name):
         if not name in self.plots:

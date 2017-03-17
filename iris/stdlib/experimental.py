@@ -42,16 +42,6 @@ class TestIf(IrisCommand):
 
 testIf = TestIf()
 
-class TestGetFunction(IrisCommand):
-    title = "get a function"
-    argument_types = {
-        "test": sm.FunctionSearch()
-    }
-    def command(self, test):
-        return test
-
-testGetFunction = TestGetFunction()
-
 class PokeHoles(IrisCommand):
     title = "poke holes"
     argument_types = {
@@ -61,29 +51,6 @@ class PokeHoles(IrisCommand):
         return "Great, saved the new function."
 
 pokeHoles = PokeHoles()
-
-class MakePartial(IrisCommand):
-    title = "make a partial function"
-    argument_types = {
-        "test": sm.CreatePartial(),
-    }
-    def command(self, test):
-        return test
-
-makePartial = MakePartial()
-
-class CallFunction(IrisCommand):
-    title = "call a function"
-    argument_types = {
-        "func": t.Function("What saved function do you want to call?")
-    }
-    def command(self, func):
-        to_call = func.function
-        to_call.set_query(None)
-        # to_call.init_scope() # new scope
-        return to_call.when_done(self.get_when_done_state())
-
-callFunction = CallFunction()
 
 class MakeCommand(IrisCommand):
     title = "save last iris command as {name}"
@@ -103,80 +70,3 @@ class MakeCommand(IrisCommand):
         return "I created a new command called \"{}\"".format(result)
 
 makeCommand = MakeCommand()
-
-# class Add(sm.Function):
-#     title = "add {x} and {y}"
-#     argument_types = {
-#         "x": t.Int("x"),
-#         "y": t.Int("y")
-#     }
-#     def command(self, x, y):
-#         return x + y
-#
-# add = Add()
-#
-# class Subtract(sm.Function):
-#     title = "subtract {x} and {y}"
-#     argument_types = {
-#         "x": t.Int(),
-#         "y": t.Int()
-#     }
-#     def command(self, x, y):
-#         return x - y
-#
-# subtract = Subtract()
-
-# subtract_with_closure = sm.BoundFunction({
-#     "x": {"y": 3},
-#     "y": 50
-# }, Subtract())
-#
-# class Int(sm.Function):
-#     title = "get int"
-#     def __init__(self):
-#         super().__init__()
-#         self.accepts_input = False
-#     def next_state_base(self, text):
-#         return t.Int("Please enter an integer value:").when_done(self.get_when_done_state())
-#
-# class GrabFunc(sm.Function):
-#     title = "grab func"
-#     def __init__(self):
-#         super().__init__()
-#         self.accepts_input = False
-#     argument_types = {
-#         "func": sm.FunctionSearch()
-#     }
-#     def command(self, func):
-#         return func
-#
-# grabFunc = GrabFunc()
-
-# class DoPartial(sm.Function):
-#     def __init__(self):
-#         super().__init__()
-#         self.accepts_input = False
-#     argument_types = { "function": sm.FunctionSearch() }
-#     def
-
-
-# sm.IRIS_MODEL.train_model()
-
-# class TestWhile(IrisCommand):
-#     title = "test while loop"
-#     examples = []
-#     argument_types = {
-#         "test": sm.DoAll([
-#             sm.Assign("x", ValueState(10))
-#             sm.While(sm.GreaterThan("x", 0),
-#                 sm.DoAll([
-#                     sm.Print(["Hi!"])
-#                     sm.Assign("x", sm.Minus("x",1))
-#                 ])
-#             ),
-#         ]
-#     }
-#     def command(self, test):
-#         return test
-#
-# testWhile = TestWhile()

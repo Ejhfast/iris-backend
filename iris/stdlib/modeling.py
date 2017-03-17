@@ -2,34 +2,197 @@ from .. import IrisCommand
 from .. import state_types as t
 from .. import state_machine as sm
 from .. import util as util
+from .. import iris_objects
 
-class MakeModel(IrisCommand):
-    title = "create a new classification model"
+class MakeClassifier(IrisCommand):
+    title = "make a classification model: {features} to predict {classes}"
     examples = [ "build a new classification model",
-                 "make a new classification model" ]
-    argument_types = { "x_features": t.DataframeSelector("What dataframe do you want to use to select the features?"), #t.ArgList(question="Please give me a comma-separated list of features"),
-                       "y_classes": t.DataframeSelector("What dataframe holds the values to be predicted?"), }#t.ArgList(question="What would you like to predict?") }
+                 "make a new classification model",
+                 "classifier using {features} to predict {classes}",
+                 "logistic regression model",
+                 "logistic classifier" ]
+    argument_types = {
+        "model_type": t.Select(options={
+            "Logistic Regression classifier": "logistic",
+            "Random Forest classifier": "random_forest"
+        }),
+        "features": t.Dataframe("What do you want to use as features?"), #t.DataframeSelector("What dataframe do you want to use to select the features?"), #t.ArgList(question="Please give me a comma-separated list of features"),
+        "classes": t.Dataframe("What do you want to predict?"),
+        "name": t.String("What would you like to call the model?")
+    }
     help_text = [
         "A classification model is designed to predict a categorical variable, like eye color or gender.",
         "This command takes a list of input features, as arrays, that will be used to predict the category in question.",
         "It then takes the name of an array that corresponds to the category to be predicted."
     ]
-    store_result = t.VarName(question="What should I call the model?")
-    def command(self, x_features, y_classes):
-        model = LogisticRegression()
-        y_classes = y_classes.reshape(y_classes.shape[0])
-        model.fit(x_features, y_classes)
-        if "names" in self.context:
-            name = self.context["names"][0].name
+    def command(self, model_type, features, classes, name = None):
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.ensemble import RandomForestClassifier
+        if model_type == "random_forest":
+                model = RandomForestClassifier()
         else:
-            name = None
-        # we use IrisModel here because it retains a link to X, y data
-        # this can be useful for cross-validation, etc.
-        return iris_objects.IrisModel(model, x_features, y_classes, name=name)
-    def explanation(self, results):
-        return [] # do nothing
+            model = LogisticRegression()
+        model = iris_objects.IrisModel(model, features, classes, name=name)
+        if name:
+            self.iris.add_to_env(name, model)
+        return model
 
-makeModel = MakeModel()
+makeClassifier = MakeClassifier()
+
+class MakeRegression(IrisCommand):
+    title = "make a regression model: {features} to predict {classes}"
+    examples = [ "build a new regression model",
+                 "make a new regression model",
+                 "regression using {features} to predict {classes}" ]
+    argument_types = {
+        "features": t.Dataframe("What do you want to use as features?"), #t.DataframeSelector("What dataframe do you want to use to select the features?"), #t.ArgList(question="Please give me a comma-separated list of features"),
+        "classes": t.Dataframe("What do you want to predict?"),
+        "name": t.String("What would you like to call the model?")
+    }
+    help_text = [
+        "A regression model is designed to predict a continues variable, like height or income.",
+        "This command takes a list of input features, as arrays, that will be used to predict the value in question.",
+        "It then takes the name of an array that corresponds to the values to be predicted."
+    ]
+    def command(self, features, classes, name = None):
+        from sklearn.linear_model import LinearRegression
+        model = LinearRegression()
+        model = iris_objects.IrisModel(model, features, classes, name=name)
+        if name:
+            self.iris.add_to_env(name, model)
+        return model
+
+makeRegression = MakeRegression()
+
+class LassoFeatures(IrisCommand):
+    title = "lasso feature selection for {model} with L1 of {regularization}"
+    examples = [
+        "feature selection for {model} via lasso"
+    ]
+    argument_types = {
+        "model": t.EnvVar("What model would you like to use?"),
+        "regularization": t.Float("With regularization of?"),
+        "num_f": t.Int("How many features would you like to see?")
+    }
+    def command(self, model, regularization, num_f):
+        from sklearn.linear_model import LogisticRegression
+        new_model = LogisticRegression(penalty="l1", C=regularization)
+        new_model.fit(model.X, model.y)
+        results = []
+        feature2name = {i:name for i,name in enumerate(model.dataframe_X.column_names)}
+        class2name = {i:value for value,i in model.dataframe_y.cat2index[0].items()}#{i:name for i,name in enumerate(model.dataframe_y.column_names)}
+        print(class2name)
+        for class_ in range(0, new_model.coef_.shape[0]):
+            most_pos = sorted([(feature2name[i], value) for i,value in enumerate(new_model.coef_[class_])], key=lambda x: x[1], reverse=True)[:int(num_f/2)]
+            most_neg = sorted([(feature2name[i], value) for i,value in enumerate(new_model.coef_[class_])], key=lambda x: x[1])[:int(num_f/2)]
+            if class_ in class2name:
+                class_name = class2name[class_]
+            else:
+                class_name = str(class_)
+            results.append(class_name)
+            results.append("most positively associated features:")
+            results.append(most_pos)
+            results.append("most negatively associated features:")
+            results.append(most_neg)
+        return results
+
+lassoFeatures = LassoFeatures()
+
+class ChangeFeatureType(IrisCommand):
+    title = "change {feature} in {dataframe} to {new_type}"
+    examples = [
+        "change feature {feature} in dataframe {dataframe} to {type}"
+    ]
+    argument_types = {
+        "dataframe": t.Dataframe("From what dataframe?"),
+        "feature": t.String("What feature do you want to change?"),
+        "new_type": t.Select(options={
+            "Categorical": "Categorical",
+            "String": "String",
+            "Number": "Number"
+        })
+    }
+    def command(self, dataframe, feature, new_type):
+        return dataframe.change_type(feature, new_type)
+
+changeFeatureType = ChangeFeatureType()
+
+class RemoveFeature(IrisCommand):
+    title = "remove {feature} from {dataframe}"
+    examples = [
+        "remove feature {feature} from {dataframe}"
+    ]
+    argument_types = {
+        "dataframe": t.Dataframe("From what dataframe?"),
+        "feature": t.String("Except what feature?")
+    }
+    def command(self, dataframe, feature):
+        return dataframe.remove_column(feature)
+
+removeFeature = RemoveFeature()
+
+class VectorizeTextColumn(IrisCommand):
+    title = "vectorize {column} in {dataframe}"
+    examples = [
+        "make word vectors for {feature} in dataframe {dataframe}"
+    ]
+    argument_types = {
+        "dataframe": t.Dataframe("From what dataframe?"),
+        "column": t.String("What feature do you want to change?"),
+    }
+    def command(self, dataframe, column):
+        from sklearn.feature_extraction.text import CountVectorizer
+        vectorizer = CountVectorizer()
+        documents = dataframe.get_column(column)
+        tfidf = vectorizer.fit_transform(documents).toarray()
+        vocab = {i:v for v,i in vectorizer.vocabulary_.items()}
+        new_frame = iris_objects.IrisDataframe()
+        new_frame.data = tfidf
+        new_frame.column_names = [vocab[i] for i in range(0, tfidf.shape[1])]
+        return new_frame
+
+vectorizeTextColumn = VectorizeTextColumn()
+
+class MakeFeatureGroup(IrisCommand):
+    title = "select a group of features"
+    examples = [
+        "create a new group of features",
+        "create a feature set",
+        "select columns from dataframe"
+    ]
+    def command(self, feature_set : t.DataframeSelector("From what dataframe?")):
+        return feature_set
+
+makeFeatureGroup = MakeFeatureGroup()
+
+class GetCoefficients(IrisCommand):
+    title = "show {model} coefficients"
+    examples = [
+        "feature coefficients for model {model}",
+        "feature relationship coefficients",
+        "features coefficients"
+    ]
+    argument_types = {
+        "model": t.EnvVar("What model would you like to get the coefficients from?")
+    }
+    def command(self, model):
+        import numpy as np
+        feature_names = model.dataframe_X.column_names
+        model.fit()
+        coefs = model.model.coef_
+        class2name = {i:value for value,i in model.dataframe_y.cat2index[0].items()}
+        results = []
+        results.append("Columns are: {}".format(", ".join(feature_names)))
+        for class_ in range(0, model.model.coef_.shape[0]):
+            if class_ in class2name:
+                class_name = class2name[class_]
+            else:
+                class_name = str(class_)
+            results.append("For class "+class_name)
+            results.append(model.model.coef_[class_])
+        return results
+
+getCoefficients = GetCoefficients()
 
 class TrainTestSplit(IrisCommand):
     title = "create training and test data splits"
@@ -96,9 +259,9 @@ class TestModelF1(IrisCommand):
 
 testModelF1 = TestModelF1()
 
-class CrossValidateModel(IrisCommand):
-    title = "cross-validate {model} with {score} and {n} folds"
-    examples = [ "cross-validate {model} {score} {n}", "evaluate model performance" ]
+class CrossValidateClassifier(IrisCommand):
+    title = "cross-validate classification {model} with {score} and {n} folds"
+    examples = [ "cross-validate classification {model} {score} {n}", "evaluate classifier performance" ]
     help_text = [
         "This command evaluates a model through cross-validation, using either accuracy or F1 score.",
         "Cross-validation is a common way to evaluate a model.",
@@ -110,7 +273,8 @@ class CrossValidateModel(IrisCommand):
         "score": t.Select(options={
             "Accuracy: correct predictions / incorrect predictions": "accuracy",
             "F1 macro: f1 score computed with average across classes": "f1_macro",
-            "F1 binary: f1 score computed on the positive class": "f1"
+            "F1 binary: f1 score computed on the positive class": "f1",
+            "AUC: Area under the ROC curve": "roc_auc"
         }, default="accuracy"),
         "n": t.Int()
     }
@@ -120,7 +284,7 @@ class CrossValidateModel(IrisCommand):
                     yes=sm.DoAll([sm.Print(["Great, let's use accuracy"]), sm.ValueState("accuracy")]),
                     no=t.YesNo("Do you have more than two classes?",
                             yes=sm.DoAll([sm.Print(["Great, let's use f1_macro.",
-                                                    "That's a standard metric for mult-class analysis"]),
+                                                    "That's a standard metric for multi-class analysis"]),
                                               sm.ValueState("f1_macro")]),
                             no=sm.DoAll([sm.Print(["Great, let's use f1 (defaults to binary).",
                                                    "That's the conventional metric for binary data."]),
@@ -134,7 +298,30 @@ class CrossValidateModel(IrisCommand):
         score = round(np.average(score), 4)
         return "Average performance of {} across the folds".format(score)
 
-crossValidateModel = CrossValidateModel()
+crossValidateClassifier = CrossValidateClassifier()
+
+class CrossValidateRegression(IrisCommand):
+    title = "cross-validate regression {model} with {score} and {n} folds"
+    examples = [ "cross-validate regression {model} {score} {n}", "evaluate regression performance" ]
+    argument_types = {
+        "model": t.EnvVar(),
+        "score": t.Select(options={
+            "R^2": "r2",
+            "MSE": "neg_mean_squared_error",
+            "MAE": "neg_mean_absolute_error",
+        }, default="r2"),
+        "n": t.Int()
+    }
+    def command(self, model, score, n):
+        from sklearn.cross_validation import cross_val_score
+        return score, cross_val_score(model.model, model.X, model.y, scoring = score, cv=n)
+    def explanation(self, results):
+        metric, scores = results
+        import numpy as np
+        score = round(np.average(scores), 4)
+        return "Average performance of {} {} across the folds".format(score, metric)
+
+crossValidateRegression = CrossValidateRegression()
 
 class CompareModels(IrisCommand):
     title = "compare {model1} and {model2} using {metric}"
