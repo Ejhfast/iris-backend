@@ -30,7 +30,7 @@ class ListDataframeNames(IrisCommand):
     def explanation(self, results):
         return [
             "The column names are:",
-            {"type":"data", "value":util.prettify_data(results)}
+            results
         ]
 
 listDataframeNames = ListDataframeNames()

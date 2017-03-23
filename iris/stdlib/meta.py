@@ -38,7 +38,7 @@ loadEnv = LoadEnv()
 
 class StoreCommand(IrisCommand):
     title = "save {value} to {name}"
-    examples = ["save {value} as {name}" ]
+    examples = ["save {value} as {name}", "save that {value} to {name}" ]
     argument_types = {
         "value": t.EnvVar(),
         "name": t.String("What name would you like to save it as?")

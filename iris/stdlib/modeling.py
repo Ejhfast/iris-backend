@@ -154,11 +154,12 @@ class VectorizeTextColumn(IrisCommand):
 vectorizeTextColumn = VectorizeTextColumn()
 
 class MakeFeatureGroup(IrisCommand):
-    title = "select a group of features"
+    title = "select one or more features / columns"
     examples = [
         "create a new group of features",
         "create a feature set",
-        "select columns from dataframe"
+        "select columns from dataframe",
+        "select a group of features"
     ]
     def command(self, feature_set : t.DataframeSelector("From what dataframe?")):
         return feature_set
@@ -170,7 +171,8 @@ class GetCoefficients(IrisCommand):
     examples = [
         "feature coefficients for model {model}",
         "feature relationship coefficients",
-        "features coefficients"
+        "features coefficients",
+        "get coefficient"
     ]
     argument_types = {
         "model": t.EnvVar("What model would you like to get the coefficients from?")

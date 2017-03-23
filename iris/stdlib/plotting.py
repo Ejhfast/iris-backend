@@ -162,7 +162,7 @@ class PlotHistogram(IrisCommand):
         "A histogram counts the number of datapoints that hold certain values."
     ]
     argument_types = {
-        "data": t.EnvVar("What would you like to plot?"),
+        "data": t.Dataframe("What would you like to plot?"),
         "name": t.String("Where would you like to save the plot?")
     }
     def command(self, data, name):
@@ -170,7 +170,7 @@ class PlotHistogram(IrisCommand):
         matplotlib.use('AGG')
         import matplotlib.pyplot as plt
         f = plt.figure(self.iris.gen_plot_id(name))
-        plt.hist(data)
+        plt.hist(data.to_matrix())
         plot_data = iris_objects.IrisImage(f, name)
         self.iris.add_to_env(name, plot_data)
         return plot_data
